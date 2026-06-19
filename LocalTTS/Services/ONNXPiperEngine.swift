@@ -1,5 +1,5 @@
 import Foundation
-import onnxruntime
+import OnnxRuntimeBindings
 
 final class ONNXPiperEngine: PiperEngine {
     private struct PiperConfig: Decodable {
