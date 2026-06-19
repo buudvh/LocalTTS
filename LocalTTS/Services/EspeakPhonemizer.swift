@@ -18,6 +18,8 @@ final class EspeakPhonemizer {
             appLog("[EspeakPhonemizer] [Check] dataPath exists: \(fm.fileExists(atPath: dataPath))")
             appLog("[EspeakPhonemizer] [Check] phondata exists: \(fm.fileExists(atPath: dataPath + "/phondata"))")
             appLog("[EspeakPhonemizer] [Check] phontab exists: \(fm.fileExists(atPath: dataPath + "/phontab"))")
+            appLog("[EspeakPhonemizer] [Check] phonindex exists: \(fm.fileExists(atPath: dataPath + "/phonindex"))")
+            appLog("[EspeakPhonemizer] [Check] intonations exists: \(fm.fileExists(atPath: dataPath + "/intonations"))")
             appLog("[EspeakPhonemizer] [Check] voices exists: \(fm.fileExists(atPath: dataPath + "/voices"))")
             
             let parentPath = URL(fileURLWithPath: dataPath).deletingLastPathComponent().path
@@ -37,6 +39,24 @@ final class EspeakPhonemizer {
             guard voiceResult.rawValue == 0 else {
                 throw APIError.internalError("espeak_SetVoiceByName('vi') failed.")
             }
+            
+            // Run English test check
+            appLog("[EspeakPhonemizer] [Test EN] Setting voice to 'en'")
+            _ = espeak_SetVoiceByName("en")
+            if let enCString = "hello world".cString(using: .utf8) {
+                enCString.withUnsafeBufferPointer { buffer in
+                    var enTextPointer: UnsafeRawPointer? = UnsafeRawPointer(buffer.baseAddress)
+                    let enPhonemes = espeak_TextToPhonemes(&enTextPointer, 1, 2)
+                    if let enPhonemes {
+                        appLog("[EspeakPhonemizer] [Test EN] Success: '\(String(cString: enPhonemes))'")
+                    } else {
+                        appLog("[EspeakPhonemizer] [Test EN] Failed: returned nil")
+                    }
+                }
+            }
+            
+            // Re-set voice to 'vi'
+            _ = espeak_SetVoiceByName("vi")
             
             isInitialized = true
         }
@@ -61,7 +81,11 @@ final class EspeakPhonemizer {
                 // textmode: espeakCHARS_UTF8 = 1
                 // phonememode: 2 (IPA - International Phonetic Alphabet as UTF-8)
                 appLog("[EspeakPhonemizer] [P6] calling espeak_TextToPhonemes (iteration: \(iterations))")
-                if let phonemesCStr = espeak_TextToPhonemes(&textPointer, 1, 2) {
+                let phonemesCStr = espeak_TextToPhonemes(&textPointer, 1, 2)
+                appLog("[EspeakPhonemizer] [P6_Result] Pointer: \(String(describing: phonemesCStr))")
+                appLog("[EspeakPhonemizer] [P6_Result] textPointer after call: \(String(describing: textPointer))")
+                if let phonemesCStr {
+                    appLog("[EspeakPhonemizer] [P6_Result] First byte: \(phonemesCStr.pointee)")
                     let part = String(cString: phonemesCStr)
                     appLog("[EspeakPhonemizer] [P7] espeak_TextToPhonemes completed. phonemes: '\(part)'")
                     if !result.isEmpty && !part.isEmpty {
