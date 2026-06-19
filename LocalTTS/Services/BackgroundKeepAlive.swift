@@ -25,7 +25,7 @@ final class BackgroundKeepAlive {
             audioPlayer?.play()
             isPlaying = true
         } catch {
-            print("Failed to start background keep-alive: \(error)")
+            appLog("Failed to start background keep-alive: \(error)")
         }
     }
 

@@ -70,7 +70,7 @@ final class ONNXPiperEngine: PiperEngine {
                     phonemeIds.append(Int64(padId))
                 }
             } else {
-                print("Warning: Missing phoneme mapping for: \(phonemeStr)")
+                appLog("Warning: Missing phoneme mapping for: \(phonemeStr)")
             }
         }
         phonemeIds.append(Int64(eosId))

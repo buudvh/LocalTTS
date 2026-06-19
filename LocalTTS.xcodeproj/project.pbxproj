@@ -13,6 +13,7 @@
 		000000000000000000000104 /* APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000204 /* APIModels.swift */; };
 		000000000000000000000105 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000205 /* Extensions.swift */; };
 		000000000000000000000106 /* WAVEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000206 /* WAVEncoder.swift */; };
+		00000000000000000000010F /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000020F /* AppLogger.swift */; };
 		000000000000000000000107 /* ModelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000207 /* ModelStore.swift */; };
 		000000000000000000000108 /* NghiTTSClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000208 /* NghiTTSClient.swift */; };
 		000000000000000000000109 /* PiperTTSService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000209 /* PiperTTSService.swift */; };
@@ -33,6 +34,7 @@
 		000000000000000000000204 /* APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIModels.swift; sourceTree = "<group>"; };
 		000000000000000000000205 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
 		000000000000000000000206 /* WAVEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WAVEncoder.swift; sourceTree = "<group>"; };
+		00000000000000000000020F /* AppLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogger.swift; sourceTree = "<group>"; };
 		000000000000000000000207 /* ModelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelStore.swift; sourceTree = "<group>"; };
 		000000000000000000000208 /* NghiTTSClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NghiTTSClient.swift; sourceTree = "<group>"; };
 		000000000000000000000209 /* PiperTTSService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiperTTSService.swift; sourceTree = "<group>"; };
@@ -117,6 +119,7 @@
 			children = (
 				000000000000000000000205 /* Extensions.swift */,
 				000000000000000000000206 /* WAVEncoder.swift */,
+				00000000000000000000020F /* AppLogger.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -204,6 +207,7 @@
 				000000000000000000000104 /* APIModels.swift in Sources */,
 				000000000000000000000105 /* Extensions.swift in Sources */,
 				000000000000000000000106 /* WAVEncoder.swift in Sources */,
+				00000000000000000000010F /* AppLogger.swift in Sources */,
 				000000000000000000000107 /* ModelStore.swift in Sources */,
 				000000000000000000000108 /* NghiTTSClient.swift in Sources */,
 				000000000000000000000109 /* PiperTTSService.swift in Sources */,

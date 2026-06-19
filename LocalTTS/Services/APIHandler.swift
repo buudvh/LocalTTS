@@ -37,6 +37,31 @@ final class APIHandler {
                 let voices = try await nghiClient.fetchVietnameseVoices(forceRefresh: false)
                 return try json(VoicesResponse(voices: voices.map { $0.name }, source: "nghitts.app", cached: true))
 
+            case ("GET", "/logs"):
+                let logText = AppLogger.shared.getLogs()
+                return HTTPResponse(
+                    statusCode: 200,
+                    reason: "OK",
+                    headers: [
+                        "Content-Type": "text/plain; charset=utf-8",
+                        "Content-Length": "\(logText.utf8.count)"
+                    ],
+                    body: Data(logText.utf8)
+                )
+
+            case ("POST", "/logs/clear"):
+                AppLogger.shared.clearLogs()
+                let responseText = "Logs cleared."
+                return HTTPResponse(
+                    statusCode: 200,
+                    reason: "OK",
+                    headers: [
+                        "Content-Type": "text/plain; charset=utf-8",
+                        "Content-Length": "\(responseText.utf8.count)"
+                    ],
+                    body: Data(responseText.utf8)
+                )
+
             case ("POST", "/v1/models/prefetch"):
                 let body = try decode(PrefetchRequest.self, from: request.body)
                 guard !body.voices.isEmpty else {
@@ -80,7 +105,7 @@ final class APIHandler {
                     body: audio
                 )
 
-            case (_, "/health"), (_, "/v1/voices"), (_, "/v1/models/prefetch"), (_, "/v1/tts"):
+            case (_, "/health"), (_, "/v1/voices"), (_, "/v1/models/prefetch"), (_, "/v1/tts"), (_, "/logs"), (_, "/logs/clear"):
                 throw APIError.methodNotAllowed("Method \(request.method) is not allowed for \(request.path).")
 
             default:

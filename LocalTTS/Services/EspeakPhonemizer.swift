@@ -65,28 +65,28 @@ final class EspeakPhonemizer {
     private static func findEspeakDataPath() -> String? {
         let fm = FileManager.default
         
-        print("=== DEBUG: findEspeakDataPath ===")
-        print("Bundle.main.bundlePath: \(Bundle.main.bundlePath)")
+        appLog("=== DEBUG: findEspeakDataPath ===")
+        appLog("Bundle.main.bundlePath: \(Bundle.main.bundlePath)")
         if let resourcePath = Bundle.main.resourcePath {
-            print("Bundle.main.resourcePath: \(resourcePath)")
+            appLog("Bundle.main.resourcePath: \(resourcePath)")
             if let files = try? fm.subpathsOfDirectory(atPath: resourcePath) {
-                print("--- FILES IN RESOURCE PATH ---")
+                appLog("--- FILES IN RESOURCE PATH ---")
                 for file in files {
                     if file.lowercased().contains("espeak") || file.lowercased().contains("bundle") {
-                        print("  \(file)")
+                        appLog("  \(file)")
                     }
                 }
             }
         }
         
-        print("--- ALL BUNDLES ---")
+        appLog("--- ALL BUNDLES ---")
         for bundle in Bundle.allBundles {
-            print("  \(bundle.bundlePath)")
+            appLog("  \(bundle.bundlePath)")
         }
         
-        print("--- ALL FRAMEWORKS ---")
+        appLog("--- ALL FRAMEWORKS ---")
         for framework in Bundle.allFrameworks {
-            print("  \(framework.bundlePath)")
+            appLog("  \(framework.bundlePath)")
         }
         
         let roots: [URL] = (
@@ -102,20 +102,20 @@ final class EspeakPhonemizer {
         // Remove duplicates to prevent redundant scans
         let uniqueRoots = Array(Set(roots))
         
-        print("--- SCANNING ROOTS ---")
+        appLog("--- SCANNING ROOTS ---")
         for root in uniqueRoots {
-            print("  Scanning root: \(root.path)")
+            appLog("  Scanning root: \(root.path)")
             if let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: nil) {
                 for case let url as URL in enumerator {
                     if url.lastPathComponent == "espeak-ng-data" {
-                        print("FOUND MATCH: \(url.path)")
+                        appLog("FOUND MATCH: \(url.path)")
                         return url.path
                     }
                 }
             }
         }
         
-        print("=== DEBUG END: NOT FOUND ===")
+        appLog("=== DEBUG END: NOT FOUND ===")
         return nil
     }
 }
