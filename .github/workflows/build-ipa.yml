@@ -26,7 +26,7 @@ jobs:
       - name: Resolve and patch Package dependencies
         run: |
           set -euo pipefail
-          xcodebuild -resolvePackageDependencies -project LocalTTS.xcodeproj -derivedDataPath build
+          xcodebuild -resolvePackageDependencies -project LocalTTS.xcodeproj -scheme LocalTTS -derivedDataPath build
           python3 -c '
           import os
           p = "build/SourcePackages/checkouts/espeak-ng-spm/Package.swift"
@@ -148,7 +148,7 @@ jobs:
         if: steps.signing.outputs.available == 'true'
         run: |
           set -euo pipefail
-          xcodebuild -resolvePackageDependencies -project LocalTTS.xcodeproj -derivedDataPath build
+          xcodebuild -resolvePackageDependencies -project LocalTTS.xcodeproj -scheme LocalTTS -derivedDataPath build
           python3 -c '
           import os
           p = "build/SourcePackages/checkouts/espeak-ng-spm/Package.swift"
