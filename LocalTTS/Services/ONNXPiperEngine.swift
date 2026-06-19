@@ -88,7 +88,8 @@ final class ONNXPiperEngine: PiperEngine {
         // Input 1: "input" -> shape [1, phoneme_count]
         let inputShape: [NSNumber] = [1, NSNumber(value: phonemeIds.count)]
         let inputData = phonemeIds.withUnsafeBufferPointer { buffer in
-            Data(bytes: buffer.baseAddress!, count: buffer.count * MemoryLayout<Int64>.size)
+            guard let baseAddress = buffer.baseAddress else { return Data() }
+            return Data(bytes: baseAddress, count: buffer.count * MemoryLayout<Int64>.size)
         }
         let inputTensor = try ORTValue(
             tensorData: NSMutableData(data: inputData),
@@ -115,7 +116,8 @@ final class ONNXPiperEngine: PiperEngine {
         let scales = [noiseScale, lengthScale, noiseW]
         let scalesShape: [NSNumber] = [3]
         let scalesData = scales.withUnsafeBufferPointer { buffer in
-            Data(bytes: buffer.baseAddress!, count: buffer.count * MemoryLayout<Float>.size)
+            guard let baseAddress = buffer.baseAddress else { return Data() }
+            return Data(bytes: baseAddress, count: buffer.count * MemoryLayout<Float>.size)
         }
         let scalesTensor = try ORTValue(
             tensorData: NSMutableData(data: scalesData),
