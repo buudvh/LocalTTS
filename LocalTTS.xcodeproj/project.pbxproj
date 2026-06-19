@@ -413,8 +413,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/espeak-ng/espeak-ng-spm";
 			requirement = {
-				kind = branch;
-				branch = master;
+				kind = revision;
+				revision = cb0dfa23248513e39b9619d8d1383da329507281;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
