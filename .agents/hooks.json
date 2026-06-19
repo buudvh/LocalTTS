@@ -1,0 +1,9 @@
+{
+  "hooks": [
+    {
+      "event": "on_commit",
+      "action": "run_workflow",
+      "workflow": "use-codegraph"
+    }
+  ]
+}
