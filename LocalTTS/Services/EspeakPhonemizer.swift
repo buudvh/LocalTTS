@@ -15,7 +15,7 @@ final class EspeakPhonemizer {
             }
             
             // AUDIO_OUTPUT_RETRIEVAL = 1
-            let sampleRate = espeak_Initialize(espeak_AUDIO_OUTPUT(rawValue: 1), 0, dataPath, 0)
+            let sampleRate = espeak_Initialize(AUDIO_OUTPUT_RETRIEVAL, 0, dataPath, 0)
             guard sampleRate >= 0 else {
                 throw APIError.internalError("espeak_Initialize failed with code \(sampleRate).")
             }
