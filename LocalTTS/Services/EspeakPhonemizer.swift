@@ -20,9 +20,10 @@ final class EspeakPhonemizer {
             appLog("[EspeakPhonemizer] [Check] phontab exists: \(fm.fileExists(atPath: dataPath + "/phontab"))")
             appLog("[EspeakPhonemizer] [Check] voices exists: \(fm.fileExists(atPath: dataPath + "/voices"))")
             
-            appLog("[EspeakPhonemizer] [P1] calling espeak_Initialize(dataPath: \(dataPath))")
+            let parentPath = URL(fileURLWithPath: dataPath).deletingLastPathComponent().path
+            appLog("[EspeakPhonemizer] [P1] calling espeak_Initialize(dataPath: \(parentPath))")
             // AUDIO_OUTPUT_RETRIEVAL = 1
-            let sampleRate = espeak_Initialize(AUDIO_OUTPUT_RETRIEVAL, 0, dataPath, 0)
+            let sampleRate = espeak_Initialize(AUDIO_OUTPUT_RETRIEVAL, 0, parentPath, 0)
             appLog("[EspeakPhonemizer] [P2] espeak_Initialize completed. sampleRate: \(sampleRate)")
             guard sampleRate >= 0 else {
                 throw APIError.internalError("espeak_Initialize failed with code \(sampleRate).")

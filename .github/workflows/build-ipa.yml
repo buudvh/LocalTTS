@@ -85,6 +85,14 @@ jobs:
               cp "$BREW_DATA_PATH/intonations" "$DEST_DATA_PATH"/
             fi
             ls -la "$DEST_DATA_PATH"
+            
+            # Verify required espeak database files
+            echo "Verifying copied espeak-ng database files..."
+            test -f "$DEST_DATA_PATH/phondata"
+            test -f "$DEST_DATA_PATH/phontab"
+            test -f "$DEST_DATA_PATH/phonindex"
+            test -f "$DEST_DATA_PATH/intonations"
+            echo "Verification successful!"
           else
             echo "Error: $DEST_DATA_PATH does not exist!"
             exit 1
@@ -221,6 +229,14 @@ jobs:
               cp "$BREW_DATA_PATH/intonations" "$DEST_DATA_PATH"/
             fi
             ls -la "$DEST_DATA_PATH"
+            
+            # Verify required espeak database files in Archive
+            echo "Verifying copied espeak-ng database files in Archive..."
+            test -f "$DEST_DATA_PATH/phondata"
+            test -f "$DEST_DATA_PATH/phontab"
+            test -f "$DEST_DATA_PATH/phonindex"
+            test -f "$DEST_DATA_PATH/intonations"
+            echo "Archive verification successful!"
           else
             echo "Error: $DEST_DATA_PATH not found in Archive!"
             exit 1
