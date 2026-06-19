@@ -116,7 +116,7 @@ final class ONNXPiperEngine: PiperEngine {
         
         // 6. Chạy suy luận (Run Inference)
         let outputs = try session.run(
-            withFeeds: feeds,
+            withInputs: feeds,
             outputNames: ["output"],
             runOptions: nil
         )
