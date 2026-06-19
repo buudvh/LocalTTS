@@ -32,7 +32,7 @@ final class AppLogger {
                     fileHandle.closeFile()
                 }
             } else {
-                try? data.write(to: logURL, atomically: true)
+                try? data.write(to: logURL, options: .atomic)
             }
         }
     }

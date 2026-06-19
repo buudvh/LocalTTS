@@ -76,7 +76,7 @@ final class ONNXPiperEngine: PiperEngine {
         phonemeIds.append(Int64(eosId))
         
         // 4. Lấy môi trường và Session từ cache (hoặc khởi tạo mới nếu đổi model)
-        let (env, session) = try getSession(modelONNX: modelONNX)
+        let (_, session) = try getSession(modelONNX: modelONNX)
         
         let inputNames = try session.inputNames()
         let outputNames = try session.outputNames()
