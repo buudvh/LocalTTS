@@ -20,6 +20,7 @@
 		000000000000000000000111 /* APIHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000211 /* APIHandler.swift */; };
 		000000000000000000000112 /* HTTPTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000212 /* HTTPTypes.swift */; };
 		000000000000000000000113 /* LocalHTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000213 /* LocalHTTPServer.swift */; };
+		000000000000000000000114 /* BackgroundKeepAlive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000214 /* BackgroundKeepAlive.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,6 +38,7 @@
 		000000000000000000000211 /* APIHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIHandler.swift; sourceTree = "<group>"; };
 		000000000000000000000212 /* HTTPTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPTypes.swift; sourceTree = "<group>"; };
 		000000000000000000000213 /* LocalHTTPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalHTTPServer.swift; sourceTree = "<group>"; };
+		000000000000000000000214 /* BackgroundKeepAlive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundKeepAlive.swift; sourceTree = "<group>"; };
 		000000000000000000000301 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -99,6 +101,7 @@
 				000000000000000000000211 /* APIHandler.swift */,
 				000000000000000000000212 /* HTTPTypes.swift */,
 				000000000000000000000213 /* LocalHTTPServer.swift */,
+				000000000000000000000214 /* BackgroundKeepAlive.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -193,6 +196,7 @@
 				000000000000000000000111 /* APIHandler.swift in Sources */,
 				000000000000000000000112 /* HTTPTypes.swift in Sources */,
 				000000000000000000000113 /* LocalHTTPServer.swift in Sources */,
+				000000000000000000000114 /* BackgroundKeepAlive.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

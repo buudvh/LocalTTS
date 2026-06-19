@@ -56,8 +56,8 @@ final class APIHandler {
                 }
 
                 let voice = (body.voice?.trimmed.isEmpty == false)
-                    ? body.voice!.trimmed
-                    : NghiTTSClient.defaultVietnameseVoice
+                    ? body.voice!.trimmed.precomposedStringWithCanonicalMapping
+                    : NghiTTSClient.defaultVietnameseVoice.precomposedStringWithCanonicalMapping
 
                 let voices = try await nghiClient.fetchVietnameseVoices(forceRefresh: false)
                 guard voices.contains(voice) else {

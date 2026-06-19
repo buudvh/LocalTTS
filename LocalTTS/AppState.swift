@@ -8,6 +8,7 @@ final class AppState: ObservableObject {
     let ttsService: PiperTTSService
     let apiHandler: APIHandler
     let server: LocalHTTPServer
+    private let keepAlive = BackgroundKeepAlive()
 
     @Published var lastError: String?
     private var cancellables: Set<AnyCancellable> = []
@@ -34,6 +35,7 @@ final class AppState: ObservableObject {
     func startServer() {
         do {
             try server.start()
+            keepAlive.start()
             lastError = nil
         } catch {
             lastError = error.localizedDescription
@@ -42,5 +44,6 @@ final class AppState: ObservableObject {
 
     func stopServer() {
         server.stop()
+        keepAlive.stop()
     }
 }

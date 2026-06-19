@@ -1,4 +1,6 @@
 import Foundation
+import CryptoKit
+
 
 final class ModelStore {
     private let fileManager: FileManager
@@ -68,6 +70,11 @@ final class ModelStore {
     }
 
     static func cacheKey(for voice: String) -> String {
-        voice.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? voice
+        let normalized = voice.precomposedStringWithCanonicalMapping
+        guard let data = normalized.data(using: .utf8) else {
+            return voice.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? voice
+        }
+        let hash = SHA256.hash(data: data)
+        return hash.map { String(format: "%02x", $0) }.joined()
     }
 }

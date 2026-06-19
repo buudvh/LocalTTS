@@ -40,7 +40,7 @@ final class NghiTTSClient {
 
     func fetchVietnameseVoices(forceRefresh: Bool) async throws -> [String] {
         if !forceRefresh, let cached = modelStore.readCachedVoices(), !cached.isEmpty {
-            return cached
+            return cached.map { $0.precomposedStringWithCanonicalMapping }
         }
 
         do {
@@ -48,19 +48,21 @@ final class NghiTTSClient {
             let (data, response) = try await session.data(from: url)
             try Self.validateHTTP(response)
             let decoded = try JSONDecoder().decode(ModelsResponse.self, from: data)
-            try modelStore.writeCachedVoices(decoded.models)
-            return decoded.models
+            let normalizedVoices = decoded.models.map { $0.precomposedStringWithCanonicalMapping }
+            try modelStore.writeCachedVoices(normalizedVoices)
+            return normalizedVoices
         } catch {
             if let cached = modelStore.readCachedVoices(), !cached.isEmpty {
-                return cached
+                return cached.map { $0.precomposedStringWithCanonicalMapping }
             }
-            return Self.fallbackVietnameseVoices
+            return Self.fallbackVietnameseVoices.map { $0.precomposedStringWithCanonicalMapping }
         }
     }
 
     func prefetchModels(voices: [String]) async throws -> [PrefetchResult] {
         var results: [PrefetchResult] = []
-        for voice in voices {
+        for rawVoice in voices {
+            let voice = rawVoice.precomposedStringWithCanonicalMapping
             let onnxURL = try remoteModelURL(for: voice, extension: "onnx")
             let configURL = try remoteModelURL(for: voice, extension: "onnx.json")
             let localOnnx = modelStore.modelURL(for: voice, extension: "onnx")
