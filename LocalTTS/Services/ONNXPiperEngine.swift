@@ -57,7 +57,9 @@ final class ONNXPiperEngine: PiperEngine {
         // 5. Chuẩn bị các Tensor đầu vào
         // Input 1: "input" -> shape [1, phoneme_count]
         let inputShape: [NSNumber] = [1, NSNumber(value: phonemeIds.count)]
-        let inputData = phonemeIds.withUnsafeBufferPointer { Data($0) }
+        let inputData = phonemeIds.withUnsafeBufferPointer { buffer in
+            Data(bytes: buffer.baseAddress!, count: buffer.count * MemoryLayout<Int64>.size)
+        }
         let inputTensor = try ORTValue(
             tensorData: NSMutableData(data: inputData),
             elementType: ORTTensorElementDataType.int64,
@@ -65,9 +67,11 @@ final class ONNXPiperEngine: PiperEngine {
         )
         
         // Input 2: "input_lengths" -> shape [1]
-        var inputLengthValue: Int64 = Int64(phonemeIds.count)
+        let inputLengthValue: Int64 = Int64(phonemeIds.count)
         let lengthShape: [NSNumber] = [1]
-        let lengthData = Data(bytes: &inputLengthValue, count: MemoryLayout<Int64>.size)
+        let lengthData = withUnsafePointer(to: inputLengthValue) { ptr in
+            Data(bytes: ptr, count: MemoryLayout<Int64>.size)
+        }
         let lengthTensor = try ORTValue(
             tensorData: NSMutableData(data: lengthData),
             elementType: ORTTensorElementDataType.int64,
@@ -78,9 +82,11 @@ final class ONNXPiperEngine: PiperEngine {
         let noiseScale: Float = 0.667
         let lengthScale: Float = Float(1.0 / speed)
         let noiseW: Float = 0.8
-        var scales = [noiseScale, lengthScale, noiseW]
+        let scales = [noiseScale, lengthScale, noiseW]
         let scalesShape: [NSNumber] = [3]
-        let scalesData = scales.withUnsafeBufferPointer { Data($0) }
+        let scalesData = scales.withUnsafeBufferPointer { buffer in
+            Data(bytes: buffer.baseAddress!, count: buffer.count * MemoryLayout<Float>.size)
+        }
         let scalesTensor = try ORTValue(
             tensorData: NSMutableData(data: scalesData),
             elementType: ORTTensorElementDataType.float,
@@ -95,9 +101,11 @@ final class ONNXPiperEngine: PiperEngine {
         
         // Hỗ trợ mô hình đa giọng đọc (Multi-speaker) nếu có yêu cầu "sid" (Speaker ID)
         if inputNames.contains("sid") {
-            var speakerId: Int64 = 0
+            let speakerId: Int64 = 0
             let sidShape: [NSNumber] = [1]
-            let sidData = Data(bytes: &speakerId, count: MemoryLayout<Int64>.size)
+            let sidData = withUnsafePointer(to: speakerId) { ptr in
+                Data(bytes: ptr, count: MemoryLayout<Int64>.size)
+            }
             let sidTensor = try ORTValue(
                 tensorData: NSMutableData(data: sidData),
                 elementType: ORTTensorElementDataType.int64,
@@ -124,9 +132,9 @@ final class ONNXPiperEngine: PiperEngine {
         // 7. Chuyển đổi dữ liệu nhị phân đầu ra sang mảng PCM Float [-1.0, 1.0]
         var samples = [Float](repeating: 0, count: sampleCount)
         outputData.withUnsafeBytes { rawBuffer in
-            guard let floatPointer = rawBuffer.baseAddress?.assumingMemoryBound(to: Float.self) else { return }
-            for i in 0..<sampleCount {
-                samples[i] = floatPointer[i]
+            let floatBuffer = rawBuffer.bindMemory(to: Float.self)
+            for i in 0..<min(sampleCount, floatBuffer.count) {
+                samples[i] = floatBuffer[i]
             }
         }
         
