@@ -14,6 +14,12 @@ final class EspeakPhonemizer {
                 throw APIError.internalError("Cannot find espeak-ng-data directory.")
             }
             
+            let fm = FileManager.default
+            appLog("[EspeakPhonemizer] [Check] dataPath exists: \(fm.fileExists(atPath: dataPath))")
+            appLog("[EspeakPhonemizer] [Check] phondata exists: \(fm.fileExists(atPath: dataPath + "/phondata"))")
+            appLog("[EspeakPhonemizer] [Check] phontab exists: \(fm.fileExists(atPath: dataPath + "/phontab"))")
+            appLog("[EspeakPhonemizer] [Check] voices exists: \(fm.fileExists(atPath: dataPath + "/voices"))")
+            
             appLog("[EspeakPhonemizer] [P1] calling espeak_Initialize(dataPath: \(dataPath))")
             // AUDIO_OUTPUT_RETRIEVAL = 1
             let sampleRate = espeak_Initialize(AUDIO_OUTPUT_RETRIEVAL, 0, dataPath, 0)
@@ -117,9 +123,8 @@ final class EspeakPhonemizer {
             if let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: nil) {
                 for case let url as URL in enumerator {
                     if url.lastPathComponent == "espeak-ng-data" {
-                        let parentPath = url.deletingLastPathComponent().path
-                        appLog("FOUND MATCH: \(url.path), returning parent: \(parentPath)")
-                        return parentPath
+                        appLog("FOUND MATCH: \(url.path)")
+                        return url.path
                     }
                 }
             }
