@@ -142,7 +142,7 @@
 			productType = "com.apple.product-type.application";
 			packageProductDependencies = (
 				000000000000000000000C01 /* onnxruntime */,
-				000000000000000000000C02 /* espeak-ng */,
+				000000000000000000000C02 /* libespeak-ng */,
 			);
 		};
 /* End PBXNativeTarget section */
@@ -425,10 +425,10 @@
 			package = 000000000000000000000B01 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */;
 			productName = onnxruntime;
 		};
-		000000000000000000000C02 /* espeak-ng */ = {
+		000000000000000000000C02 /* libespeak-ng */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 000000000000000000000B02 /* XCRemoteSwiftPackageReference "espeak-ng-spm" */;
-			productName = "espeak-ng";
+			productName = "libespeak-ng";
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
