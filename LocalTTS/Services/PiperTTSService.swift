@@ -11,10 +11,10 @@ final class PiperTTSService {
     private(set) var currentModel: String?
 
     var engineStatus: String {
-        "Piper ONNX runtime boundary is ready. Link ONNX Runtime/eSpeak and replace UnavailablePiperEngine."
+        "Piper ONNX C++ & eSpeak-NG local engine is active."
     }
 
-    init(modelStore: ModelStore, engine: PiperEngine = UnavailablePiperEngine()) {
+    init(modelStore: ModelStore, engine: PiperEngine = ONNXPiperEngine()) {
         self.modelStore = modelStore
         self.engine = engine
     }

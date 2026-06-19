@@ -21,6 +21,8 @@
 		000000000000000000000112 /* HTTPTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000212 /* HTTPTypes.swift */; };
 		000000000000000000000113 /* LocalHTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000213 /* LocalHTTPServer.swift */; };
 		000000000000000000000114 /* BackgroundKeepAlive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000214 /* BackgroundKeepAlive.swift */; };
+		000000000000000000000115 /* EspeakPhonemizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000215 /* EspeakPhonemizer.swift */; };
+		000000000000000000000116 /* ONNXPiperEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000216 /* ONNXPiperEngine.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,6 +41,8 @@
 		000000000000000000000212 /* HTTPTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPTypes.swift; sourceTree = "<group>"; };
 		000000000000000000000213 /* LocalHTTPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalHTTPServer.swift; sourceTree = "<group>"; };
 		000000000000000000000214 /* BackgroundKeepAlive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundKeepAlive.swift; sourceTree = "<group>"; };
+		000000000000000000000215 /* EspeakPhonemizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EspeakPhonemizer.swift; sourceTree = "<group>"; };
+		000000000000000000000216 /* ONNXPiperEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ONNXPiperEngine.swift; sourceTree = "<group>"; };
 		000000000000000000000301 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -102,6 +106,8 @@
 				000000000000000000000212 /* HTTPTypes.swift */,
 				000000000000000000000213 /* LocalHTTPServer.swift */,
 				000000000000000000000214 /* BackgroundKeepAlive.swift */,
+				000000000000000000000215 /* EspeakPhonemizer.swift */,
+				000000000000000000000216 /* ONNXPiperEngine.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -134,6 +140,10 @@
 			productName = LocalTTS;
 			productReference = 000000000000000000000001 /* LocalTTS.app */;
 			productType = "com.apple.product-type.application";
+			packageProductDependencies = (
+				000000000000000000000C01 /* onnxruntime */,
+				000000000000000000000C02 /* espeak-ng */,
+			);
 		};
 /* End PBXNativeTarget section */
 
@@ -162,6 +172,10 @@
 			productRefGroup = 000000000000000000000503 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
+			packageReferences = (
+				000000000000000000000B01 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */,
+				000000000000000000000B02 /* XCRemoteSwiftPackageReference "espeak-ng-spm" */,
+			);
 			targets = (
 				000000000000000000000601 /* LocalTTS */,
 			);
@@ -197,6 +211,8 @@
 				000000000000000000000112 /* HTTPTypes.swift in Sources */,
 				000000000000000000000113 /* LocalHTTPServer.swift in Sources */,
 				000000000000000000000114 /* BackgroundKeepAlive.swift in Sources */,
+				000000000000000000000115 /* EspeakPhonemizer.swift in Sources */,
+				000000000000000000000116 /* ONNXPiperEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -383,6 +399,38 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		000000000000000000000B01 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/microsoft/onnxruntime-swift-package-manager";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.16.0;
+			};
+		};
+		000000000000000000000B02 /* XCRemoteSwiftPackageReference "espeak-ng-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/espeak-ng/espeak-ng-spm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		000000000000000000000C01 /* onnxruntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 000000000000000000000B01 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */;
+			productName = onnxruntime;
+		};
+		000000000000000000000C02 /* espeak-ng */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 000000000000000000000B02 /* XCRemoteSwiftPackageReference "espeak-ng-spm" */;
+			productName = "espeak-ng";
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 000000000000000000000901 /* Project object */;
 }
