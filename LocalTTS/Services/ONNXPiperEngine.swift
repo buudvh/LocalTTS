@@ -158,8 +158,10 @@ final class ONNXPiperEngine: PiperEngine {
         let outputData = try outputValue.tensorData() as Data
         
         // 7. Chuyển đổi dữ liệu nhị phân đầu ra sang mảng PCM Float [-1.0, 1.0]
-        let samples = outputData.withUnsafeBytes { rawBuffer in
-            Array(rawBuffer.bindMemory(to: Float.self))
+        let samplesCount = outputData.count / MemoryLayout<Float>.size
+        var samples = [Float](repeating: 0.0, count: samplesCount)
+        _ = samples.withUnsafeMutableBytes { samplesBuffer in
+            outputData.copyBytes(to: samplesBuffer)
         }
         
         // 8. Đóng gói thành tệp WAV PCM 16-bit

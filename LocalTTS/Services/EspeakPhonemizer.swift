@@ -30,15 +30,15 @@ final class EspeakPhonemizer {
             isInitialized = true
         }
 
-        guard let textData = text.data(using: .utf8) else {
+        guard let cString = text.cString(using: .utf8) else {
             throw APIError.badRequest("Invalid UTF-8 text.")
         }
         
         var result = ""
         var iterations = 0
-        textData.withUnsafeBytes { (rawBufferPointer: UnsafeRawBufferPointer) in
-            guard let baseAddress = rawBufferPointer.baseAddress else { return }
-            var textPointer: UnsafeRawPointer? = baseAddress
+        cString.withUnsafeBufferPointer { buffer in
+            guard let baseAddress = buffer.baseAddress else { return }
+            var textPointer: UnsafeRawPointer? = UnsafeRawPointer(baseAddress)
             
             while textPointer != nil {
                 iterations += 1
