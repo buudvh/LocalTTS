@@ -35,7 +35,7 @@ final class APIHandler {
 
             case ("GET", "/v1/voices"):
                 let voices = try await nghiClient.fetchVietnameseVoices(forceRefresh: false)
-                return try json(VoicesResponse(voices: voices, source: "nghitts.app", cached: true))
+                return try json(VoicesResponse(voices: voices.map { $0.name }, source: "nghitts.app", cached: true))
 
             case ("POST", "/v1/models/prefetch"):
                 let body = try decode(PrefetchRequest.self, from: request.body)
@@ -55,13 +55,13 @@ final class APIHandler {
                     throw APIError.badRequest("'text' must be \(maxTextLength) characters or fewer.")
                 }
 
-                let voice = (body.voice?.trimmed.isEmpty == false)
+                let voiceName = (body.voice?.trimmed.isEmpty == false)
                     ? body.voice!.trimmed.precomposedStringWithCanonicalMapping
-                    : NghiTTSClient.defaultVietnameseVoice.precomposedStringWithCanonicalMapping
+                    : NghiTTSClient.defaultVietnameseVoice.name
 
                 let voices = try await nghiClient.fetchVietnameseVoices(forceRefresh: false)
-                guard voices.contains(voice) else {
-                    throw APIError.badRequest("Unsupported NghiTTS voice: \(voice)")
+                guard voices.contains(where: { $0.name == voiceName }) else {
+                    throw APIError.badRequest("Unsupported NghiTTS voice: \(voiceName)")
                 }
 
                 let speed = body.speed ?? 1.0
@@ -69,7 +69,7 @@ final class APIHandler {
                     throw APIError.badRequest("'speed' must be between 0.5 and 2.0.")
                 }
 
-                let audio = try await ttsService.synthesize(text: text, voice: voice, speed: speed)
+                let audio = try await ttsService.synthesize(text: text, voice: voiceName, speed: speed)
                 return HTTPResponse(
                     statusCode: 200,
                     reason: "OK",

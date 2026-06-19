@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 
 final class ModelStore {
@@ -52,29 +51,20 @@ final class ModelStore {
         try data.write(to: voicesCacheURL, options: [.atomic])
     }
 
-    func modelURL(for voice: String, extension ext: String) -> URL {
-        modelsURL.appendingPathComponent(Self.cacheKey(for: voice)).appendingPathExtension(ext)
+    func modelURL(for voiceId: String, extension ext: String) -> URL {
+        modelsURL.appendingPathComponent(voiceId).appendingPathExtension(ext)
     }
 
-    func modelExists(for voice: String) -> Bool {
-        fileManager.fileExists(atPath: modelURL(for: voice, extension: "onnx").path)
-            && fileManager.fileExists(atPath: modelURL(for: voice, extension: "onnx.json").path)
+    func modelExists(for voiceId: String) -> Bool {
+        fileManager.fileExists(atPath: modelURL(for: voiceId, extension: "onnx").path)
+            && fileManager.fileExists(atPath: modelURL(for: voiceId, extension: "onnx.json").path)
     }
 
-    func bytesForVoice(_ voice: String) -> Int64 {
+    func bytesForVoice(_ voiceId: String) -> Int64 {
         ["onnx", "onnx.json"].reduce(Int64(0)) { partial, ext in
-            let url = modelURL(for: voice, extension: ext)
+            let url = modelURL(for: voiceId, extension: ext)
             let size = ((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize) ?? 0
             return partial + Int64(size)
         }
-    }
-
-    static func cacheKey(for voice: String) -> String {
-        let normalized = voice.precomposedStringWithCanonicalMapping
-        guard let data = normalized.data(using: .utf8) else {
-            return voice.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? voice
-        }
-        let hash = SHA256.hash(data: data)
-        return hash.map { String(format: "%02x", $0) }.joined()
     }
 }

@@ -20,8 +20,9 @@ final class PiperTTSService {
     }
 
     func synthesize(text: String, voice: String, speed: Double) async throws -> Data {
-        let modelONNX = modelStore.modelURL(for: voice, extension: "onnx")
-        let modelConfig = modelStore.modelURL(for: voice, extension: "onnx.json")
+        let voiceId = voice.toASCIIID
+        let modelONNX = modelStore.modelURL(for: voiceId, extension: "onnx")
+        let modelConfig = modelStore.modelURL(for: voiceId, extension: "onnx.json")
 
         guard FileManager.default.fileExists(atPath: modelONNX.path),
               FileManager.default.fileExists(atPath: modelConfig.path) else {

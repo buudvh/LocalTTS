@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var voices: [String] = []
+    @State private var voices: [Voice] = []
     @State private var isLoadingVoices = false
     @State private var selectedVoice = NghiTTSClient.defaultVietnameseVoice
     @State private var prefetchStatus = ""
@@ -45,7 +45,7 @@ struct ContentView: View {
 
                     Picker("Voice", selection: $selectedVoice) {
                         ForEach(voices.isEmpty ? [selectedVoice] : voices, id: \.self) { voice in
-                            Text(voice).tag(voice)
+                            Text(voice.name).tag(voice)
                         }
                     }
 
@@ -100,9 +100,9 @@ struct ContentView: View {
     }
 
     private func prefetchSelectedVoice() async {
-        prefetchStatus = "Downloading \(selectedVoice)..."
+        prefetchStatus = "Downloading \(selectedVoice.name)..."
         do {
-            let result = try await appState.nghiClient.prefetchModels(voices: [selectedVoice])
+            let result = try await appState.nghiClient.prefetchModels(voices: [selectedVoice.name])
             prefetchStatus = result.first?.message ?? "Done"
         } catch {
             prefetchStatus = error.localizedDescription

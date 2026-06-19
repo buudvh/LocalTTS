@@ -46,3 +46,36 @@ struct APIErrorResponse: Codable {
     let error: String
     let message: String
 }
+
+struct Voice: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+}
+
+extension String {
+    var toASCIIID: String {
+        let lowercased = self.lowercased()
+        let folding = lowercased.folding(options: .diacriticInsensitive, locale: .current)
+        var result = ""
+        var lastWasUnderscore = false
+        
+        for char in folding {
+            if char.isLetter || char.isNumber {
+                result.append(char)
+                lastWasUnderscore = false
+            } else if !lastWasUnderscore {
+                result.append("_")
+                lastWasUnderscore = true
+            }
+        }
+        
+        return result.trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+    }
+}
+
+extension Voice {
+    init(name: String) {
+        self.name = name
+        self.id = name.toASCIIID
+    }
+}
