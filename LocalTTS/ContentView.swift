@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
@@ -7,6 +8,10 @@ struct ContentView: View {
     @State private var selectedVoice = NghiTTSClient.defaultVietnameseVoice
     @State private var prefetchStatus = ""
     @State private var isShowingLogs = false
+    @State private var testText = "Xin chào, đây là thử giọng tiếng Việt."
+    @State private var testSpeed = 1.0
+    @State private var isSynthesizing = false
+    @State private var testAudioPlayer: AVAudioPlayer? = nil
 
     var body: some View {
         NavigationStack {
@@ -65,6 +70,28 @@ struct ContentView: View {
                     }
                 }
 
+                Section("Test TTS") {
+                    TextField("Text to synthesize", text: $testText, axis: .vertical)
+                        .lineLimit(1...5)
+                    
+                    Slider(value: $testSpeed, in: 0.5...2.0, step: 0.1) {
+                        Text("Speed")
+                    } minimumValueLabel: {
+                        Text("0.5x")
+                    } maximumValueLabel: {
+                        Text("2.0x")
+                    }
+                    
+                    Text(String(format: "Speed: %.1fx", testSpeed))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    Button(isSynthesizing ? "Synthesizing..." : "Speak") {
+                        Task { await testTTS() }
+                    }
+                    .disabled(isSynthesizing || testText.trimmed.isEmpty)
+                }
+
                 Section("Engine") {
                     Text(appState.ttsService.engineStatus)
                         .font(.caption)
@@ -116,6 +143,29 @@ struct ContentView: View {
             prefetchStatus = result.first?.message ?? "Done"
         } catch {
             prefetchStatus = error.localizedDescription
+        }
+    }
+
+    private func testTTS() async {
+        isSynthesizing = true
+        appState.lastError = nil
+        defer { isSynthesizing = false }
+        
+        do {
+            appLog("Starting UI TTS test for voice: \(selectedVoice.name), speed: \(testSpeed)")
+            let audioData = try await appState.ttsService.synthesize(
+                text: testText,
+                voice: selectedVoice.name,
+                speed: testSpeed
+            )
+            
+            appLog("Synthesis complete, audio data size: \(audioData.count) bytes. Playing...")
+            testAudioPlayer = try AVAudioPlayer(data: audioData)
+            testAudioPlayer?.prepareToPlay()
+            testAudioPlayer?.play()
+        } catch {
+            appLog("UI TTS test failed: \(error.localizedDescription)")
+            appState.lastError = error.localizedDescription
         }
     }
 }
