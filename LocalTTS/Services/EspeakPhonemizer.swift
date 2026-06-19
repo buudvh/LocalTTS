@@ -15,7 +15,7 @@ final class EspeakPhonemizer {
             }
             
             // AUDIO_OUTPUT_RETRIEVAL = 1
-            let sampleRate = espeak_Initialize(.retrieval, 0, dataPath, 0)
+            let sampleRate = espeak_Initialize(AUDIO_OUTPUT_RETRIEVAL, 0, dataPath, 0)
             guard sampleRate >= 0 else {
                 throw APIError.internalError("espeak_Initialize failed with code \(sampleRate).")
             }
@@ -35,14 +35,19 @@ final class EspeakPhonemizer {
         }
         
         var result = ""
-        try textData.withUnsafeBytes { (rawBufferPointer: UnsafeRawBufferPointer) in
+        var iterations = 0
+        textData.withUnsafeBytes { (rawBufferPointer: UnsafeRawBufferPointer) in
             guard let baseAddress = rawBufferPointer.baseAddress else { return }
             var textPointer: UnsafeRawPointer? = baseAddress
             
             while textPointer != nil {
+                iterations += 1
+                if iterations > 10000 {
+                    break
+                }
                 // textmode: espeakCHARS_UTF8 = 1
-                // phonememode: 0 (ASCII phoneme names)
-                if let phonemesCStr = espeak_TextToPhonemes(&textPointer, 1, 0) {
+                // phonememode: 2 (IPA - International Phonetic Alphabet as UTF-8)
+                if let phonemesCStr = espeak_TextToPhonemes(&textPointer, 1, 2) {
                     let part = String(cString: phonemesCStr)
                     if !result.isEmpty && !part.isEmpty {
                         result += " "

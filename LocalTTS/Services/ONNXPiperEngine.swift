@@ -10,6 +10,31 @@ final class ONNXPiperEngine: PiperEngine {
         let phoneme_id_map: [String: [Int]]?
     }
 
+    private struct CachedSession {
+        let modelURL: URL
+        let env: ORTEnv
+        let session: ORTSession
+    }
+
+    private var cached: CachedSession?
+    private let sessionLock = NSLock()
+
+    private func getSession(modelONNX: URL) throws -> (ORTEnv, ORTSession) {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+
+        if let cached = cached, cached.modelURL == modelONNX {
+            return (cached.env, cached.session)
+        }
+
+        let env = try ORTEnv(loggingLevel: .warning)
+        let options = try ORTSessionOptions()
+        let session = try ORTSession(env: env, modelPath: modelONNX.path, sessionOptions: options)
+
+        cached = CachedSession(modelURL: modelONNX, env: env, session: session)
+        return (env, session)
+    }
+
     func synthesize(text: String, modelONNX: URL, modelConfig: URL, speed: Double) async throws -> Data {
         // 1. Đọc và phân tích cú pháp tệp cấu hình JSON
         guard let configData = try? Data(contentsOf: modelConfig) else {
@@ -36,23 +61,28 @@ final class ONNXPiperEngine: PiperEngine {
         phonemeIds.append(Int64(bosId))
         phonemeIds.append(Int64(padId))
         
-        for char in phonemes {
-            let phonemeStr = String(char)
+        // Duyệt theo từng Unicode Scalar để tránh tách sai các ký tự ghép trong IPA
+        for scalar in phonemes.unicodeScalars {
+            let phonemeStr = String(scalar)
             if let ids = phonemeIdMap[phonemeStr] {
                 for id in ids {
                     phonemeIds.append(Int64(id))
                     phonemeIds.append(Int64(padId))
                 }
+            } else {
+                print("Warning: Missing phoneme mapping for: \(phonemeStr)")
             }
         }
         phonemeIds.append(Int64(eosId))
         
-        // 4. Khởi tạo môi trường và Session của ONNX Runtime
-        let env = try ORTEnv(loggingLevel: ORTLoggingLevel.warning)
-        let options = try ORTSessionOptions()
-        let session = try ORTSession(env: env, modelPath: modelONNX.path, sessionOptions: options)
+        // 4. Lấy môi trường và Session từ cache (hoặc khởi tạo mới nếu đổi model)
+        let (env, session) = try getSession(modelONNX: modelONNX)
         
         let inputNames = try session.inputNames()
+        let outputNames = try session.outputNames()
+        guard let firstOutputName = outputNames.first else {
+            throw APIError.internalError("Model has no output names.")
+        }
         
         // 5. Chuẩn bị các Tensor đầu vào
         // Input 1: "input" -> shape [1, phoneme_count]
@@ -117,25 +147,19 @@ final class ONNXPiperEngine: PiperEngine {
         // 6. Chạy suy luận (Run Inference)
         let outputs = try session.run(
             withInputs: feeds,
-            outputNames: ["output"],
+            outputNames: [firstOutputName],
             runOptions: nil
         )
         
-        guard let outputValue = outputs["output"] else {
-            throw APIError.internalError("Model did not return speech 'output' tensor.")
+        guard let outputValue = outputs[firstOutputName] else {
+            throw APIError.internalError("Model did not return speech '\(firstOutputName)' tensor.")
         }
         
-        let outputInfo = try outputValue.tensorTypeAndShapeInfo()
-        let sampleCount = outputInfo.elementCount
         let outputData = try outputValue.tensorData() as Data
         
         // 7. Chuyển đổi dữ liệu nhị phân đầu ra sang mảng PCM Float [-1.0, 1.0]
-        var samples = [Float](repeating: 0, count: sampleCount)
-        outputData.withUnsafeBytes { rawBuffer in
-            let floatBuffer = rawBuffer.bindMemory(to: Float.self)
-            for i in 0..<min(sampleCount, floatBuffer.count) {
-                samples[i] = floatBuffer[i]
-            }
+        let samples = outputData.withUnsafeBytes { rawBuffer in
+            Array(rawBuffer.bindMemory(to: Float.self))
         }
         
         // 8. Đóng gói thành tệp WAV PCM 16-bit
