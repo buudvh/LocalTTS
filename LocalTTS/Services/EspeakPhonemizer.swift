@@ -63,28 +63,19 @@ final class EspeakPhonemizer {
     }
 
     private static func findEspeakDataPath() -> String? {
-        let candidates = [
-            "espeak-ng_data",
-            "espeak_ng_data",
-            "espeak-ng-spm_data",
-            "espeak_ng_spm_data"
-        ]
-        
-        for candidate in candidates {
-            if let bundlePath = Bundle.main.path(forResource: candidate, ofType: "bundle") {
-                return bundlePath + "/espeak-ng-data"
-            }
-        }
-        
-        if let frameworksURL = Bundle.main.privateFrameworksURL {
-            let fm = FileManager.default
-            let contents = (try? fm.contentsOfDirectory(at: frameworksURL, includingPropertiesForKeys: nil)) ?? []
-            for url in contents {
-                if let bundle = Bundle(url: url) {
-                    for candidate in candidates {
-                        if let path = bundle.path(forResource: candidate, ofType: "bundle") {
-                            return path + "/espeak-ng-data"
-                        }
+        let fm = FileManager.default
+        let roots: [URL] = [
+            Bundle.main.bundleURL,
+            Bundle.main.resourceURL,
+            Bundle.main.privateFrameworksURL
+        ].compactMap { $0 }
+
+        for root in roots {
+            if let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: nil) {
+                for case let url as URL in enumerator {
+                    if url.lastPathComponent == "espeak-ng-data" {
+                        print("FOUND: \(url.path)")
+                        return url.path
                     }
                 }
             }

@@ -143,6 +143,7 @@
 			packageProductDependencies = (
 				000000000000000000000C01 /* onnxruntime */,
 				000000000000000000000C02 /* libespeak-ng */,
+				000000000000000000000C03 /* espeak-ng-data */,
 			);
 		};
 /* End PBXNativeTarget section */
@@ -429,6 +430,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 000000000000000000000B02 /* XCRemoteSwiftPackageReference "espeak-ng-spm" */;
 			productName = "libespeak-ng";
+		};
+		000000000000000000000C03 /* espeak-ng-data */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 000000000000000000000B02 /* XCRemoteSwiftPackageReference "espeak-ng-spm" */;
+			productName = "espeak-ng-data";
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
