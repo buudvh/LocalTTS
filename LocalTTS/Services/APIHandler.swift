@@ -94,6 +94,16 @@ final class APIHandler {
                     throw APIError.badRequest("'speed' must be between 0.5 and 2.0.")
                 }
 
+                let voiceId = voiceName.toASCIIID
+                if !modelStore.modelExists(for: voiceId) {
+                    appLog("Model for '\(voiceName)' not found in cache. Automatically downloading...")
+                    do {
+                        _ = try await nghiClient.prefetchModels(voices: [voiceName])
+                    } catch {
+                        throw APIError.upstream("Failed to auto-download model for '\(voiceName)': \(error.localizedDescription)")
+                    }
+                }
+
                 let audio = try await ttsService.synthesize(text: text, voice: voiceName, speed: speed)
                 return HTTPResponse(
                     statusCode: 200,
