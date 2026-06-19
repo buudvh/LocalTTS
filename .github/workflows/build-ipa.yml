@@ -72,6 +72,24 @@ jobs:
           rm -rf Payload LocalTTS-unsigned.ipa
           mkdir Payload
           cp -R "$APP_PATH" Payload/
+          
+          # Install espeak-ng to get compiled data files
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install espeak-ng
+          BREW_DATA_PATH="$(brew --prefix espeak-ng)/share/espeak-ng-data"
+          DEST_DATA_PATH="Payload/LocalTTS.app/espeak-ng_data.bundle/espeak-ng-data"
+          
+          if [ -d "$DEST_DATA_PATH" ]; then
+            echo "Copying compiled espeak-ng database files to $DEST_DATA_PATH"
+            cp "$BREW_DATA_PATH"/phon* "$DEST_DATA_PATH"/
+            if [ -f "$BREW_DATA_PATH/intonations" ]; then
+              cp "$BREW_DATA_PATH/intonations" "$DEST_DATA_PATH"/
+            fi
+            ls -la "$DEST_DATA_PATH"
+          else
+            echo "Error: $DEST_DATA_PATH does not exist!"
+            exit 1
+          fi
+          
           /usr/bin/zip -qry LocalTTS-unsigned.ipa Payload
 
       - name: Upload unsigned IPA
@@ -184,6 +202,29 @@ jobs:
             -derivedDataPath build \
             -archivePath "$RUNNER_TEMP/LocalTTS.xcarchive" \
             archive
+
+      - name: Add compiled espeak-ng data to Archive
+        if: steps.signing.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          APP_PATH="$RUNNER_TEMP/LocalTTS.xcarchive/Products/Applications/LocalTTS.app"
+          test -d "$APP_PATH"
+          
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install espeak-ng
+          BREW_DATA_PATH="$(brew --prefix espeak-ng)/share/espeak-ng-data"
+          DEST_DATA_PATH="$APP_PATH/espeak-ng_data.bundle/espeak-ng-data"
+          
+          if [ -d "$DEST_DATA_PATH" ]; then
+            echo "Copying compiled espeak-ng database files to Archive: $DEST_DATA_PATH"
+            cp "$BREW_DATA_PATH"/phon* "$DEST_DATA_PATH"/
+            if [ -f "$BREW_DATA_PATH/intonations" ]; then
+              cp "$BREW_DATA_PATH/intonations" "$DEST_DATA_PATH"/
+            fi
+            ls -la "$DEST_DATA_PATH"
+          else
+            echo "Error: $DEST_DATA_PATH not found in Archive!"
+            exit 1
+          fi
 
       - name: Export signed IPA
         if: steps.signing.outputs.available == 'true'
