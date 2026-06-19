@@ -31,6 +31,7 @@ jobs:
           import os
           p = "build/SourcePackages/checkouts/espeak-ng-spm/Package.swift"
           if os.path.exists(p):
+              os.chmod(p, 0o644)
               with open(p, "r") as f:
                   c = f.read()
               target = ".define(\"N_PATH_HOME\", to: \"1024\"),"
@@ -153,6 +154,7 @@ jobs:
           import os
           p = "build/SourcePackages/checkouts/espeak-ng-spm/Package.swift"
           if os.path.exists(p):
+              os.chmod(p, 0o644)
               with open(p, "r") as f:
                   c = f.read()
               target = ".define(\"N_PATH_HOME\", to: \"1024\"),"
