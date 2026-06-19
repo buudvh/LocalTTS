@@ -23,6 +23,31 @@ jobs:
       - name: Show project
         run: xcodebuild -list -project LocalTTS.xcodeproj
 
+      - name: Resolve and patch Package dependencies
+        run: |
+          set -euo pipefail
+          xcodebuild -resolvePackageDependencies -project LocalTTS.xcodeproj -derivedDataPath build
+          python3 -c '
+          import os
+          p = "build/SourcePackages/checkouts/espeak-ng-spm/Package.swift"
+          if os.path.exists(p):
+              with open(p, "r") as f:
+                  c = f.read()
+              target = ".define(\"N_PATH_HOME\", to: \"1024\"),"
+              replacement = target + "\n        .unsafeFlags([\"-Wno-error=implicit-function-declaration\", \"-Wno-error=implicit-int\", \"-Wno-error=incompatible-pointer-types\"]),"
+              if target in c:
+                  c = c.replace(target, replacement)
+                  with open(p, "w") as f:
+                      f.write(c)
+                  print("Patched Package.swift successfully!")
+              else:
+                  print("Error: Target string not found in Package.swift!")
+                  exit(1)
+          else:
+              print(f"Error: {p} not found!")
+              exit(1)
+          '
+
       - name: Build app for device
         run: |
           set -euo pipefail
@@ -36,7 +61,6 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
-            OTHER_CFLAGS="-Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=incompatible-pointer-types" \
             build
 
       - name: Package unsigned IPA
@@ -120,6 +144,32 @@ jobs:
           cp "$PP_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
           cp "$EXPORT_OPTIONS_PATH" "$RUNNER_TEMP/ExportOptions.plist"
 
+      - name: Resolve and patch Package dependencies for Archive
+        if: steps.signing.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          xcodebuild -resolvePackageDependencies -project LocalTTS.xcodeproj -derivedDataPath build
+          python3 -c '
+          import os
+          p = "build/SourcePackages/checkouts/espeak-ng-spm/Package.swift"
+          if os.path.exists(p):
+              with open(p, "r") as f:
+                  c = f.read()
+              target = ".define(\"N_PATH_HOME\", to: \"1024\"),"
+              replacement = target + "\n        .unsafeFlags([\"-Wno-error=implicit-function-declaration\", \"-Wno-error=implicit-int\", \"-Wno-error=incompatible-pointer-types\"]),"
+              if target in c:
+                  c = c.replace(target, replacement)
+                  with open(p, "w") as f:
+                      f.write(c)
+                  print("Patched Package.swift successfully!")
+              else:
+                  print("Error: Target string not found in Package.swift!")
+                  exit(1)
+          else:
+              print(f"Error: {p} not found!")
+              exit(1)
+          '
+
       - name: Archive
         if: steps.signing.outputs.available == 'true'
         run: |
@@ -129,8 +179,8 @@ jobs:
             -scheme LocalTTS \
             -configuration Release \
             -destination "generic/platform=iOS" \
+            -derivedDataPath build \
             -archivePath "$RUNNER_TEMP/LocalTTS.xcarchive" \
-            OTHER_CFLAGS="-Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=incompatible-pointer-types" \
             archive
 
       - name: Export signed IPA
