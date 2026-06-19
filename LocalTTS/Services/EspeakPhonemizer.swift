@@ -15,7 +15,7 @@ final class EspeakPhonemizer {
             }
             
             // AUDIO_OUTPUT_RETRIEVAL = 1
-            let sampleRate = espeak_Initialize(AUDIO_OUTPUT_RETRIEVAL, 0, dataPath, 0)
+            let sampleRate = espeak_Initialize(espeak_AUDIO_OUTPUT.AUDIO_OUTPUT_RETRIEVAL, 0, dataPath, 0)
             guard sampleRate >= 0 else {
                 throw APIError.internalError("espeak_Initialize failed with code \(sampleRate).")
             }
@@ -23,7 +23,7 @@ final class EspeakPhonemizer {
             // Set voice to Vietnamese
             let voiceResult = espeak_SetVoiceByName("vi")
             // EE_OK = 0
-            guard voiceResult == EE_OK else {
+            guard voiceResult == espeak_ERROR.EE_OK else {
                 throw APIError.internalError("espeak_SetVoiceByName('vi') failed.")
             }
             
