@@ -64,13 +64,20 @@ final class EspeakPhonemizer {
 
     private static func findEspeakDataPath() -> String? {
         let fm = FileManager.default
-        let roots: [URL] = [
-            Bundle.main.bundleURL,
-            Bundle.main.resourceURL,
-            Bundle.main.privateFrameworksURL
-        ].compactMap { $0 }
+        let roots: [URL] = (
+            [
+                Bundle.main.bundleURL,
+                Bundle.main.resourceURL,
+                Bundle.main.privateFrameworksURL
+            ] +
+            Bundle.allBundles.map(\.bundleURL) +
+            Bundle.allFrameworks.map(\.bundleURL)
+        ).compactMap { $0 }
 
-        for root in roots {
+        // Remove duplicates to prevent redundant scans
+        let uniqueRoots = Array(Set(roots))
+
+        for root in uniqueRoots {
             if let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: nil) {
                 for case let url as URL in enumerator {
                     if url.lastPathComponent == "espeak-ng-data" {
