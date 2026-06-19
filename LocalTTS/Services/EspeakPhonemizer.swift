@@ -40,6 +40,25 @@ final class EspeakPhonemizer {
                 throw APIError.internalError("espeak_SetVoiceByName('vi') failed.")
             }
             
+            // Log Current Voice safely
+            if let currentVoice = espeak_GetCurrentVoice() {
+                var nameStr = "nil"
+                var langStr = "nil"
+                var idStr = "nil"
+                if let namePtr = currentVoice.pointee.name {
+                    nameStr = String(cString: namePtr)
+                }
+                if let langPtr = currentVoice.pointee.languages {
+                    langStr = String(cString: langPtr)
+                }
+                if let idPtr = currentVoice.pointee.identifier {
+                    idStr = String(cString: idPtr)
+                }
+                appLog("[EspeakPhonemizer] Current voice: name=\(nameStr), languages=\(langStr), identifier=\(idStr)")
+            } else {
+                appLog("[EspeakPhonemizer] Current voice is nil")
+            }
+            
             // Run English test check
             appLog("[EspeakPhonemizer] [Test EN] Setting voice to 'en'")
             _ = espeak_SetVoiceByName("en")

@@ -79,20 +79,24 @@ jobs:
           DEST_DATA_PATH="Payload/LocalTTS.app/espeak-ng_data.bundle/espeak-ng-data"
           
           if [ -d "$DEST_DATA_PATH" ]; then
-            echo "Copying compiled espeak-ng database files to $DEST_DATA_PATH"
-            cp "$BREW_DATA_PATH"/phon* "$DEST_DATA_PATH"/
-            if [ -f "$BREW_DATA_PATH/intonations" ]; then
-              cp "$BREW_DATA_PATH/intonations" "$DEST_DATA_PATH"/
-            fi
-            ls -la "$DEST_DATA_PATH"
+            echo "Copying compiled espeak-ng database files recursively to $DEST_DATA_PATH"
+            cp -R "$BREW_DATA_PATH"/* "$DEST_DATA_PATH"/
             
-            # Verify required espeak database files
-            echo "Verifying copied espeak-ng database files..."
+            # Verify core espeak database files
+            echo "Verifying core espeak-ng database files..."
             test -f "$DEST_DATA_PATH/phondata"
             test -f "$DEST_DATA_PATH/phontab"
             test -f "$DEST_DATA_PATH/phonindex"
             test -f "$DEST_DATA_PATH/intonations"
-            echo "Verification successful!"
+            echo "Core verification successful!"
+            
+            # Run CLI sanity check on runner
+            echo "Running CLI sanity check on runner..."
+            "$(brew --prefix espeak-ng)/bin/espeak-ng" -x "hello world"
+            
+            # Print diagnosis information in logs
+            echo "Diagnostic: Available voice files in bundle:"
+            ls -la "$DEST_DATA_PATH/voices" | head -n 30
           else
             echo "Error: $DEST_DATA_PATH does not exist!"
             exit 1
@@ -223,20 +227,24 @@ jobs:
           DEST_DATA_PATH="$APP_PATH/espeak-ng_data.bundle/espeak-ng-data"
           
           if [ -d "$DEST_DATA_PATH" ]; then
-            echo "Copying compiled espeak-ng database files to Archive: $DEST_DATA_PATH"
-            cp "$BREW_DATA_PATH"/phon* "$DEST_DATA_PATH"/
-            if [ -f "$BREW_DATA_PATH/intonations" ]; then
-              cp "$BREW_DATA_PATH/intonations" "$DEST_DATA_PATH"/
-            fi
-            ls -la "$DEST_DATA_PATH"
+            echo "Copying compiled espeak-ng database files recursively to Archive: $DEST_DATA_PATH"
+            cp -R "$BREW_DATA_PATH"/* "$DEST_DATA_PATH"/
             
-            # Verify required espeak database files in Archive
-            echo "Verifying copied espeak-ng database files in Archive..."
+            # Verify core espeak database files in Archive
+            echo "Verifying core espeak-ng database files in Archive..."
             test -f "$DEST_DATA_PATH/phondata"
             test -f "$DEST_DATA_PATH/phontab"
             test -f "$DEST_DATA_PATH/phonindex"
             test -f "$DEST_DATA_PATH/intonations"
-            echo "Archive verification successful!"
+            echo "Archive core verification successful!"
+            
+            # Run CLI sanity check on runner
+            echo "Running CLI sanity check on runner..."
+            "$(brew --prefix espeak-ng)/bin/espeak-ng" -x "hello world"
+            
+            # Print diagnosis information in Archive logs
+            echo "Diagnostic Archive: Available voice files in bundle:"
+            ls -la "$DEST_DATA_PATH/voices" | head -n 30
           else
             echo "Error: $DEST_DATA_PATH not found in Archive!"
             exit 1
