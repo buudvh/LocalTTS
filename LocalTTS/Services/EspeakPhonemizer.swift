@@ -64,6 +64,31 @@ final class EspeakPhonemizer {
 
     private static func findEspeakDataPath() -> String? {
         let fm = FileManager.default
+        
+        print("=== DEBUG: findEspeakDataPath ===")
+        print("Bundle.main.bundlePath: \(Bundle.main.bundlePath)")
+        if let resourcePath = Bundle.main.resourcePath {
+            print("Bundle.main.resourcePath: \(resourcePath)")
+            if let files = try? fm.subpathsOfDirectory(atPath: resourcePath) {
+                print("--- FILES IN RESOURCE PATH ---")
+                for file in files {
+                    if file.lowercased().contains("espeak") || file.lowercased().contains("bundle") {
+                        print("  \(file)")
+                    }
+                }
+            }
+        }
+        
+        print("--- ALL BUNDLES ---")
+        for bundle in Bundle.allBundles {
+            print("  \(bundle.bundlePath)")
+        }
+        
+        print("--- ALL FRAMEWORKS ---")
+        for framework in Bundle.allFrameworks {
+            print("  \(framework.bundlePath)")
+        }
+        
         let roots: [URL] = (
             [
                 Bundle.main.bundleURL,
@@ -76,17 +101,21 @@ final class EspeakPhonemizer {
 
         // Remove duplicates to prevent redundant scans
         let uniqueRoots = Array(Set(roots))
-
+        
+        print("--- SCANNING ROOTS ---")
         for root in uniqueRoots {
+            print("  Scanning root: \(root.path)")
             if let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: nil) {
                 for case let url as URL in enumerator {
                     if url.lastPathComponent == "espeak-ng-data" {
-                        print("FOUND: \(url.path)")
+                        print("FOUND MATCH: \(url.path)")
                         return url.path
                     }
                 }
             }
         }
+        
+        print("=== DEBUG END: NOT FOUND ===")
         return nil
     }
 }
