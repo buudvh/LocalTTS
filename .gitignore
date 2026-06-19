@@ -1,0 +1,25 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# macOS
+.DS_Store
+
+# Swift Package Manager
+.build/
+Package.resolved
+
+# Local artifacts
+*.ipa
+*.app
+*.xcarchive
+Payload/
+sample.wav
+
+# Secrets and signing files
+*.p12
+*.mobileprovision
+ExportOptions.plist

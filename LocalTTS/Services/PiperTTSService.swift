@@ -1,0 +1,47 @@
+import Foundation
+
+protocol PiperEngine {
+    func synthesize(text: String, modelONNX: URL, modelConfig: URL, speed: Double) async throws -> Data
+}
+
+final class PiperTTSService {
+    private let modelStore: ModelStore
+    private let engine: PiperEngine
+
+    private(set) var currentModel: String?
+
+    var engineStatus: String {
+        "Piper ONNX runtime boundary is ready. Link ONNX Runtime/eSpeak and replace UnavailablePiperEngine."
+    }
+
+    init(modelStore: ModelStore, engine: PiperEngine = UnavailablePiperEngine()) {
+        self.modelStore = modelStore
+        self.engine = engine
+    }
+
+    func synthesize(text: String, voice: String, speed: Double) async throws -> Data {
+        let modelONNX = modelStore.modelURL(for: voice, extension: "onnx")
+        let modelConfig = modelStore.modelURL(for: voice, extension: "onnx.json")
+
+        guard FileManager.default.fileExists(atPath: modelONNX.path),
+              FileManager.default.fileExists(atPath: modelConfig.path) else {
+            throw APIError.modelNotCached("Model '\(voice)' is not cached. Call /v1/models/prefetch first.")
+        }
+
+        currentModel = voice
+        return try await engine.synthesize(
+            text: text,
+            modelONNX: modelONNX,
+            modelConfig: modelConfig,
+            speed: speed
+        )
+    }
+}
+
+struct UnavailablePiperEngine: PiperEngine {
+    func synthesize(text: String, modelONNX: URL, modelConfig: URL, speed: Double) async throws -> Data {
+        throw APIError.engineUnavailable(
+            "Native Piper synthesis is not linked yet. Add ONNX Runtime Mobile plus an eSpeak phonemizer binding, then implement PiperEngine."
+        )
+    }
+}
