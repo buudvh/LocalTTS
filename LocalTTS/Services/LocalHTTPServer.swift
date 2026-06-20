@@ -73,6 +73,9 @@ final class LocalHTTPServer: ObservableObject {
 
             if let request = Self.parseRequest(nextBuffer) {
                 Task {
+                    let bgSession = BackgroundTaskSession.begin(name: "LocalTTS-Request")
+                    defer { bgSession.end() }
+                    
                     await MainActor.run {
                         self.lastRequest = "\(request.method) \(request.path)"
                     }

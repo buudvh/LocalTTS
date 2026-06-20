@@ -12,6 +12,10 @@ struct ContentView: View {
     @State private var testSpeed = 1.0
     @State private var isSynthesizing = false
     @State private var testAudioPlayer: AVAudioPlayer? = nil
+    @State private var enableTransliteration = true
+    @State private var disablePunctuationPauses = false
+    @State private var isDownloadingAll = false
+    @State private var downloadProgress = ""
 
     var body: some View {
         NavigationStack {
@@ -63,6 +67,26 @@ struct ContentView: View {
                         Task { await prefetchSelectedVoice() }
                     }
 
+                    let uncached = voices.filter { !appState.modelStore.modelExists(for: $0.id) }
+                    if !uncached.isEmpty {
+                        Button(isDownloadingAll ? "Đang tải các Model... (\(downloadProgress))" : "Tải tất cả các Model (\(uncached.count))") {
+                            Task { await downloadAllModels(uncached) }
+                        }
+                        .disabled(isDownloadingAll)
+                    }
+
+                    Button("Cập nhật từ điển tiếng Anh") {
+                        Task {
+                            prefetchStatus = "Đang tải từ điển..."
+                            do {
+                                try await appState.nghiClient.downloadCSVFiles()
+                                prefetchStatus = "Cập nhật từ điển thành công!"
+                            } catch {
+                                prefetchStatus = "Lỗi tải từ điển: \(error.localizedDescription)"
+                            }
+                        }
+                    }
+
                     if !prefetchStatus.isEmpty {
                         Text(prefetchStatus)
                             .font(.caption)
@@ -85,6 +109,9 @@ struct ContentView: View {
                     Text(String(format: "Speed: %.1fx", testSpeed))
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    Toggle("Dịch phiên âm tiếng Anh", isOn: $enableTransliteration)
+                    Toggle("Không ngắt khi gặp dấu câu", isOn: $disablePunctuationPauses)
                     
                     Button(isSynthesizing ? "Synthesizing..." : "Speak") {
                         Task { await testTTS() }
@@ -146,6 +173,24 @@ struct ContentView: View {
         }
     }
 
+    private func downloadAllModels(_ uncached: [Voice]) async {
+        isDownloadingAll = true
+        defer { isDownloadingAll = false }
+        
+        var count = 0
+        for voice in uncached {
+            count += 1
+            downloadProgress = "\(count)/\(uncached.count)"
+            appLog("Auto downloading \(voice.name)...")
+            do {
+                _ = try await appState.nghiClient.prefetchModels(voices: [voice.name])
+            } catch {
+                appLog("Failed to prefetch \(voice.name): \(error.localizedDescription)")
+            }
+        }
+        downloadProgress = "Done"
+    }
+
     private func testTTS() async {
         isSynthesizing = true
         appState.lastError = nil
@@ -156,7 +201,9 @@ struct ContentView: View {
             let audioData = try await appState.ttsService.synthesize(
                 text: testText,
                 voice: selectedVoice.name,
-                speed: testSpeed
+                speed: testSpeed,
+                disablePunctuationPauses: disablePunctuationPauses,
+                enableTransliteration: enableTransliteration
             )
             
             appLog("Synthesis complete, audio data size: \(audioData.count) bytes. Playing...")

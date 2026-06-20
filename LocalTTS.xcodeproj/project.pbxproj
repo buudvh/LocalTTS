@@ -24,6 +24,10 @@
 		000000000000000000000114 /* BackgroundKeepAlive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000214 /* BackgroundKeepAlive.swift */; };
 		000000000000000000000115 /* EspeakPhonemizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000215 /* EspeakPhonemizer.swift */; };
 		000000000000000000000116 /* ONNXPiperEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000216 /* ONNXPiperEngine.swift */; };
+		000000000000000000000117 /* TextPreprocessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000217 /* TextPreprocessor.swift */; };
+		000000000000000000000118 /* BackgroundTaskSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000218 /* BackgroundTaskSession.swift */; };
+		000000000000000000000119 /* non-vietnamese-words.csv in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000219 /* non-vietnamese-words.csv */; };
+		00000000000000000000011A /* acronyms.csv in Resources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000021A /* acronyms.csv */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -45,6 +49,10 @@
 		000000000000000000000214 /* BackgroundKeepAlive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundKeepAlive.swift; sourceTree = "<group>"; };
 		000000000000000000000215 /* EspeakPhonemizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EspeakPhonemizer.swift; sourceTree = "<group>"; };
 		000000000000000000000216 /* ONNXPiperEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ONNXPiperEngine.swift; sourceTree = "<group>"; };
+		000000000000000000000217 /* TextPreprocessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextPreprocessor.swift; sourceTree = "<group>"; };
+		000000000000000000000218 /* BackgroundTaskSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTaskSession.swift; sourceTree = "<group>"; };
+		000000000000000000000219 /* non-vietnamese-words.csv */ = {isa = PBXFileReference; lastKnownFileType = text; path = "non-vietnamese-words.csv"; sourceTree = "<group>"; };
+		00000000000000000000021A /* acronyms.csv */ = {isa = PBXFileReference; lastKnownFileType = text; path = acronyms.csv; sourceTree = "<group>"; };
 		000000000000000000000301 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -110,6 +118,7 @@
 				000000000000000000000214 /* BackgroundKeepAlive.swift */,
 				000000000000000000000215 /* EspeakPhonemizer.swift */,
 				000000000000000000000216 /* ONNXPiperEngine.swift */,
+				000000000000000000000217 /* TextPreprocessor.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -120,6 +129,9 @@
 				000000000000000000000205 /* Extensions.swift */,
 				000000000000000000000206 /* WAVEncoder.swift */,
 				00000000000000000000020F /* AppLogger.swift */,
+				000000000000000000000218 /* BackgroundTaskSession.swift */,
+				000000000000000000000219 /* non-vietnamese-words.csv */,
+				00000000000000000000021A /* acronyms.csv */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -191,6 +203,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				000000000000000000000119 /* non-vietnamese-words.csv in Resources */,
+				00000000000000000000011A /* acronyms.csv in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -218,6 +232,8 @@
 				000000000000000000000114 /* BackgroundKeepAlive.swift in Sources */,
 				000000000000000000000115 /* EspeakPhonemizer.swift in Sources */,
 				000000000000000000000116 /* ONNXPiperEngine.swift in Sources */,
+				000000000000000000000117 /* TextPreprocessor.swift in Sources */,
+				000000000000000000000118 /* BackgroundTaskSession.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

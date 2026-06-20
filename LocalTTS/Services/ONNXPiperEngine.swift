@@ -35,7 +35,7 @@ final class ONNXPiperEngine: PiperEngine {
         return (env, session)
     }
 
-    func synthesize(text: String, modelONNX: URL, modelConfig: URL, speed: Double) async throws -> Data {
+    func synthesize(text: String, modelONNX: URL, modelConfig: URL, speed: Double, disablePunctuationPauses: Bool) async throws -> Data {
         // 1. Đọc và phân tích cú pháp tệp cấu hình JSON
         guard let configData = try? Data(contentsOf: modelConfig) else {
             throw APIError.internalError("Cannot read Piper config file: \(modelConfig.lastPathComponent)")
@@ -54,7 +54,12 @@ final class ONNXPiperEngine: PiperEngine {
         let eosId = phonemeIdMap["$"]?.first ?? 2
         
         // 2. Chuyển văn bản sang âm vị sử dụng eSpeak NG
-        let phonemes = try EspeakPhonemizer.phonemize(text: text)
+        var processedText = text
+        if disablePunctuationPauses {
+            let punctuationSet = CharacterSet(charactersIn: ",.?!;:()[]{}\"'-—–")
+            processedText = text.components(separatedBy: punctuationSet).joined(separator: " ")
+        }
+        let phonemes = try EspeakPhonemizer.phonemize(text: processedText)
         
         // 3. Ánh xạ âm vị sang mảng Phoneme IDs theo chuẩn VITS (BOS, PAD, P1, PAD, P2, ..., EOS)
         var phonemeIds: [Int64] = []

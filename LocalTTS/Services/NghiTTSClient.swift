@@ -39,6 +39,17 @@ final class NghiTTSClient {
     }
 
     func fetchVietnameseVoices(forceRefresh: Bool) async throws -> [Voice] {
+        let fm = FileManager.default
+        let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.csv")
+        let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.csv")
+        if forceRefresh || !fm.fileExists(atPath: localWords.path) || !fm.fileExists(atPath: localAcronyms.path) {
+            do {
+                try await downloadCSVFiles()
+            } catch {
+                appLog("Warning: Failed to download CSV files: \(error.localizedDescription)")
+            }
+        }
+
         if !forceRefresh, let cached = modelStore.readCachedVoices(), !cached.isEmpty {
             return cached.map { Voice(name: $0.precomposedStringWithCanonicalMapping) }
         }
@@ -59,7 +70,50 @@ final class NghiTTSClient {
         }
     }
 
+    func downloadCSVFiles() async throws {
+        let bgSession = BackgroundTaskSession.begin(name: "LocalTTS-DownloadCSV")
+        defer { bgSession.end() }
+        
+        let wordsURL = baseURL.appendingPathComponent("data/non-vietnamese-words.csv")
+        let acronymsURL = baseURL.appendingPathComponent("data/acronyms.csv")
+        
+        let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.csv")
+        let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.csv")
+        
+        var requestWords = URLRequest(url: wordsURL)
+        requestWords.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0", forHTTPHeaderField: "User-Agent")
+        requestWords.setValue("https://nghitts.app/assets/tts-worker-CWObADHY.js", forHTTPHeaderField: "Referer")
+        
+        let (tempWordsURL, responseWords) = try await session.download(for: requestWords)
+        try Self.validateHTTP(responseWords)
+        
+        var requestAcronyms = URLRequest(url: acronymsURL)
+        requestAcronyms.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0", forHTTPHeaderField: "User-Agent")
+        requestAcronyms.setValue("https://nghitts.app/assets/tts-worker-CWObADHY.js", forHTTPHeaderField: "Referer")
+        
+        let (tempAcronymsURL, responseAcronyms) = try await session.download(for: requestAcronyms)
+        try Self.validateHTTP(responseAcronyms)
+        
+        let fm = FileManager.default
+        try fm.createDirectory(at: modelStore.rootURL, withIntermediateDirectories: true)
+        
+        if fm.fileExists(atPath: localWords.path) {
+            try fm.removeItem(at: localWords)
+        }
+        try fm.moveItem(at: tempWordsURL, to: localWords)
+        
+        if fm.fileExists(atPath: localAcronyms.path) {
+            try fm.removeItem(at: localAcronyms)
+        }
+        try fm.moveItem(at: tempAcronymsURL, to: localAcronyms)
+        
+        TextPreprocessor.shared.loadResources()
+    }
+
     func prefetchModels(voices: [String]) async throws -> [PrefetchResult] {
+        let bgSession = BackgroundTaskSession.begin(name: "LocalTTS-DownloadModel")
+        defer { bgSession.end() }
+        
         var results: [PrefetchResult] = []
         for rawVoice in voices {
             let voice = Voice(name: rawVoice.precomposedStringWithCanonicalMapping)

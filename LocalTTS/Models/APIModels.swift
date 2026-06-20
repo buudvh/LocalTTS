@@ -24,6 +24,8 @@ struct TTSSynthesisRequest: Codable {
     let text: String
     let voice: String?
     let speed: Double?
+    let disablePunctuationPauses: Bool?
+    let enableTransliteration: Bool?
 }
 
 struct PrefetchRequest: Codable {

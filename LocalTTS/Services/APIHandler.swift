@@ -70,6 +70,23 @@ final class APIHandler {
                 let results = try await nghiClient.prefetchModels(voices: body.voices)
                 return try json(PrefetchResponse(results: results))
 
+            case ("POST", "/v1/dictionary/update"):
+                do {
+                    try await nghiClient.downloadCSVFiles()
+                    let responseText = "Dictionary files successfully updated."
+                    return HTTPResponse(
+                        statusCode: 200,
+                        reason: "OK",
+                        headers: [
+                            "Content-Type": "text/plain; charset=utf-8",
+                            "Content-Length": "\(responseText.utf8.count)"
+                        ],
+                        body: Data(responseText.utf8)
+                    )
+                } catch {
+                    throw APIError.upstream("Failed to update dictionary files: \(error.localizedDescription)")
+                }
+
             case ("POST", "/v1/tts"):
                 let body = try decode(TTSSynthesisRequest.self, from: request.body)
                 let text = body.text.trimmed
@@ -95,16 +112,20 @@ final class APIHandler {
                 }
 
                 let voiceId = voiceName.toASCIIID
-                if !modelStore.modelExists(for: voiceId) {
-                    appLog("Model for '\(voiceName)' not found in cache. Automatically downloading...")
-                    do {
-                        _ = try await nghiClient.prefetchModels(voices: [voiceName])
-                    } catch {
-                        throw APIError.upstream("Failed to auto-download model for '\(voiceName)': \(error.localizedDescription)")
-                    }
+                guard modelStore.modelExists(for: voiceId) else {
+                    throw APIError.badRequest("Giọng đọc '\(voiceName)' chưa được tải về server. Vui lòng tải model trên ứng dụng trước khi sử dụng.")
                 }
 
-                let audio = try await ttsService.synthesize(text: text, voice: voiceName, speed: speed)
+                let disablePunctuationPauses = body.disablePunctuationPauses ?? false
+                let enableTransliteration = body.enableTransliteration ?? true
+
+                let audio = try await ttsService.synthesize(
+                    text: text,
+                    voice: voiceName,
+                    speed: speed,
+                    disablePunctuationPauses: disablePunctuationPauses,
+                    enableTransliteration: enableTransliteration
+                )
                 return HTTPResponse(
                     statusCode: 200,
                     reason: "OK",
@@ -115,7 +136,7 @@ final class APIHandler {
                     body: audio
                 )
 
-            case (_, "/health"), (_, "/v1/voices"), (_, "/v1/models/prefetch"), (_, "/v1/tts"), (_, "/logs"), (_, "/logs/clear"):
+            case (_, "/health"), (_, "/v1/voices"), (_, "/v1/models/prefetch"), (_, "/v1/tts"), (_, "/logs"), (_, "/logs/clear"), (_, "/v1/dictionary/update"):
                 throw APIError.methodNotAllowed("Method \(request.method) is not allowed for \(request.path).")
 
             default:
