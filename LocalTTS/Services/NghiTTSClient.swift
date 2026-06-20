@@ -3,19 +3,19 @@ import Foundation
 final class NghiTTSClient {
     static let defaultVietnameseVoice = Voice(name: "Ngọc Huyền (mới)")
     static let fallbackVietnameseVoices = [
+        Voice(name: "Ngọc Huyền (mới)"),
+        Voice(name: "Mai Phương"),
+        Voice(name: "Duy Onyx (mới)"),
+        Voice(name: "Ngọc Ngạn"),
         Voice(name: "Ban Mai"),
         Voice(name: "Chiếu Thành"),
-        Voice(name: "Duy Onyx (mới)"),
         Voice(name: "Duy Oryx"),
         Voice(name: "Lạc Phi"),
-        Voice(name: "Mai Phương"),
         Voice(name: "Minh Khang"),
         Voice(name: "Minh Quang"),
         Voice(name: "Mạnh Dũng"),
         Voice(name: "Mỹ Tâm"),
         Voice(name: "Mỹ Tâm Real"),
-        Voice(name: "Ngọc Huyền (mới)"),
-        Voice(name: "Ngọc Ngạn"),
         Voice(name: "Phương Trang"),
         Voice(name: "Thanh Phương Viettel"),
         Voice(name: "Thiện Tâm"),
@@ -29,7 +29,7 @@ final class NghiTTSClient {
         let models: [String]
     }
 
-    private let baseURL = URL(string: "https://nghitts.app")!
+    private let baseURL = URL(string: "https://github.com/buudvh/LocalTTS-Voice-Models/releases/download/v1.0")!
     private let session: URLSession
     private let modelStore: ModelStore
 
@@ -55,7 +55,7 @@ final class NghiTTSClient {
         }
 
         do {
-            let url = baseURL.appendingPathComponent("api/piper/vi/models")
+            let url = baseURL.appendingPathComponent("models.json")
             let (data, response) = try await session.data(from: url)
             try Self.validateHTTP(response)
             let decoded = try JSONDecoder().decode(ModelsResponse.self, from: data)
@@ -88,22 +88,20 @@ final class NghiTTSClient {
         let bgSession = BackgroundTaskSession.begin(name: "LocalTTS-DownloadCSV")
         defer { bgSession.end() }
         
-        let wordsURL = baseURL.appendingPathComponent("data/non-vietnamese-words.csv")
-        let acronymsURL = baseURL.appendingPathComponent("data/acronyms.csv")
+        let wordsURL = baseURL.appendingPathComponent("non-vietnamese-words.csv")
+        let acronymsURL = baseURL.appendingPathComponent("acronyms.csv")
         
         let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.csv")
         let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.csv")
         
         var requestWords = URLRequest(url: wordsURL)
-        requestWords.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0", forHTTPHeaderField: "User-Agent")
-        requestWords.setValue("https://nghitts.app/assets/tts-worker-CWObADHY.js", forHTTPHeaderField: "Referer")
+        requestWords.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
         
         let (tempWordsURL, responseWords) = try await session.download(for: requestWords)
         try Self.validateHTTP(responseWords)
         
         var requestAcronyms = URLRequest(url: acronymsURL)
-        requestAcronyms.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0", forHTTPHeaderField: "User-Agent")
-        requestAcronyms.setValue("https://nghitts.app/assets/tts-worker-CWObADHY.js", forHTTPHeaderField: "Referer")
+        requestAcronyms.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
         
         let (tempAcronymsURL, responseAcronyms) = try await session.download(for: requestAcronyms)
         try Self.validateHTTP(responseAcronyms)
@@ -131,8 +129,8 @@ final class NghiTTSClient {
         var results: [PrefetchResult] = []
         for rawVoice in voices {
             let voice = Voice(name: rawVoice.precomposedStringWithCanonicalMapping)
-            let onnxURL = try remoteModelURL(for: voice.name, extension: "onnx")
-            let configURL = try remoteModelURL(for: voice.name, extension: "onnx.json")
+            let onnxURL = try remoteModelURL(for: voice.id, fileExtension: "onnx")
+            let configURL = try remoteModelURL(for: voice.id, fileExtension: "onnx.json")
             let localOnnx = modelStore.modelURL(for: voice.id, extension: "onnx")
             let localConfig = modelStore.modelURL(for: voice.id, extension: "onnx.json")
 
@@ -167,10 +165,14 @@ final class NghiTTSClient {
         try FileManager.default.moveItem(at: tempURL, to: localURL)
     }
 
-    private func remoteModelURL(for voice: String, extension ext: String) throws -> URL {
-        guard let encodedVoice = voice.addingPercentEncoding(withAllowedCharacters: .urlPathComponentAllowedStrict),
-              let url = URL(string: "api/model/\(encodedVoice).\(ext)", relativeTo: baseURL)?.absoluteURL else {
+    private func remoteModelURL(for voice: String, fileExtension ext: String) throws -> URL {
+        guard let encodedVoice = voice.addingPercentEncoding(withAllowedCharacters: .urlPathComponentAllowedStrict) else {
             throw APIError.badRequest("Invalid voice name: \(voice)")
+        }
+        let baseStr = baseURL.absoluteString
+        let urlStr = baseStr.hasSuffix("/") ? "\(baseStr)\(encodedVoice).\(ext)" : "\(baseStr)/\(encodedVoice).\(ext)"
+        guard let url = URL(string: urlStr) else {
+            throw APIError.badRequest("Invalid URL for voice: \(voice)")
         }
         return url
     }
