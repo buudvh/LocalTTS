@@ -500,6 +500,18 @@ final class TextPreprocessor {
     private var acronymMap: [String: String] = [:]
     private let lock = NSLock()
     
+    func lookupAcronym(_ key: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return acronymMap[key]
+    }
+    
+    func lookupWord(_ key: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return wordMap[key]
+    }
+    
     private init() {
         loadResources()
     }
@@ -1166,51 +1178,89 @@ final class TextPreprocessor {
         return e
     }
 
+    enum DictionaryType {
+        case acronym
+        case word
+    }
+
+    private static func replaceDictionaryWords(in text: String, type: DictionaryType) -> String {
+        // Tìm toàn bộ các token là từ (word tokens) trong văn bản
+        let wordPattern = "[a-zA-Z0-9_\\u{00C0}-\\u{1EFF}]+"
+        guard let regex = try? NSRegularExpression(pattern: wordPattern, options: []) else { return text }
+        
+        let nsString = text as NSString
+        let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsString.length))
+        guard !matches.isEmpty else { return text }
+        
+        struct WordToken {
+            let text: String
+            let range: NSRange
+        }
+        
+        let words = matches.map { WordToken(text: nsString.substring(with: $0.range).lowercased(), range: $0.range) }
+        
+        var result = text
+        var offset = 0
+        var i = 0
+        
+        while i < words.count {
+            var matchedLength = 0
+            var replacement: String? = nil
+            
+            // Tìm kiếm tham lam (greedy matching): thử khớp cụm từ tối đa 4 từ giảm dần về 1 từ
+            for lookAhead in (1...4).reversed() {
+                guard i + lookAhead <= words.count else { continue }
+                
+                let startLoc = words[i].range.location
+                let lastWord = words[i + lookAhead - 1]
+                let endLoc = lastWord.range.location + lastWord.range.length
+                
+                // Lấy cụm từ gốc từ văn bản ban đầu và chuẩn hóa khoảng trắng để đối chiếu
+                let rawPhrase = nsString.substring(with: NSRange(location: startLoc, length: endLoc - startLoc)).lowercased()
+                let phrase = rawPhrase.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                                      .trimmingCharacters(in: .whitespacesAndNewlines)
+                
+                // Tra cứu trực tiếp từ lớp TextPreprocessor.shared mà không sao chép từ điển
+                let matchedValue = (type == .acronym) ? 
+                    TextPreprocessor.shared.lookupAcronym(phrase) : 
+                    TextPreprocessor.shared.lookupWord(phrase)
+                    
+                if let match = matchedValue {
+                    matchedLength = lookAhead
+                    replacement = match
+                    break
+                }
+            }
+            
+            if let match = replacement, matchedLength > 0 {
+                // Xác định vùng cần thay thế trong văn bản hiện tại
+                let startLoc = words[i].range.location
+                let lastWord = words[i + matchedLength - 1]
+                let endLoc = lastWord.range.location + lastWord.range.length
+                
+                let originalRange = NSRange(location: startLoc + offset, length: endLoc - startLoc)
+                
+                let nsResult = result as NSString
+                result = nsResult.replacingCharacters(in: originalRange, with: match)
+                
+                // Cập nhật lại offset chênh lệch độ dài
+                offset += (match.count - (endLoc - startLoc))
+                i += matchedLength
+            } else {
+                i += 1
+            }
+        }
+        
+        return result
+    }
+
     private static let tokenRegex = try! NSRegularExpression(
         pattern: "[a-zA-Z0-9_\\u{00C0}-\\u{1EFF}]+(?:[-.][a-zA-Z0-9_\\u{00C0}-\\u{1EFF}]+)*",
         options: []
     )
 
-    private static func processToken(_ token: String, localAcronyms: [String: String], localWordMap: [String: String], enableTransliteration: Bool) -> String {
-        if let replaced = localAcronyms[token] {
-            return replaced
-        }
-        
-        if let replaced = localWordMap[token] {
-            return replaced
-        }
-        
-        if token.contains("-") || token.contains(".") {
-            var result = ""
-            var currentPart = ""
-            for char in token {
-                if char == "-" || char == "." {
-                    if !currentPart.isEmpty {
-                        result += processToken(currentPart, localAcronyms: localAcronyms, localWordMap: localWordMap, enableTransliteration: enableTransliteration)
-                        currentPart = ""
-                    }
-                    result.append(char)
-                } else {
-                    currentPart.append(char)
-                }
-            }
-            if !currentPart.isEmpty {
-                result += processToken(currentPart, localAcronyms: localAcronyms, localWordMap: localWordMap, enableTransliteration: enableTransliteration)
-            }
-            return result
-        }
-        
-        if enableTransliteration {
-            if token.count > 1 && token != "mc" && !VietnameseWordChecker.isVietnameseWord(token) {
-                return EnglishTransliterator.transliterateWord(token)
-            }
-        }
-        
-        return token
-    }
-
     // MARK: - Main Preprocess Pipeline
-    func preprocess(_ text: String, enableTransliteration: Bool = true) -> String {
+    func preprocess(_ text: String, enableTransliteration: Bool = false) -> String {
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "" }
         
         let cleaned = Self.cleanEmojisAndSymbols(text)
@@ -1218,35 +1268,75 @@ final class TextPreprocessor {
         
         let lowercased = processedVi.lowercased()
         
-        lock.lock()
-        let localAcronyms = acronymMap
-        let localWordMap = wordMap
-        lock.unlock()
+        // 1. Thay thế từ viết tắt (Acronyms) luôn luôn chạy
+        var replacedText = Self.replaceDictionaryWords(in: lowercased, type: .acronym)
         
-        let nsString = lowercased as NSString
-        let matches = Self.tokenRegex.matches(in: lowercased, options: [], range: NSRange(location: 0, length: nsString.length))
-        
-        var result = ""
-        var lastOffset = 0
-        
-        for match in matches {
-            if match.range.location > lastOffset {
-                let gapRange = NSRange(location: lastOffset, length: match.range.location - lastOffset)
+        // 2. Nếu bật dịch phiên âm tiếng Anh, tiến hành khớp từ điển tiếng Anh và chạy bộ quy tắc
+        if enableTransliteration {
+            // Thay thế các từ từ từ điển tiếng Anh (non-vietnamese-words)
+            replacedText = Self.replaceDictionaryWords(in: replacedText, type: .word)
+            
+            let nsString = replacedText as NSString
+            let matches = Self.tokenRegex.matches(in: replacedText, options: [], range: NSRange(location: 0, length: nsString.length))
+            
+            var result = ""
+            var lastOffset = 0
+            
+            for match in matches {
+                if match.range.location > lastOffset {
+                    let gapRange = NSRange(location: lastOffset, length: match.range.location - lastOffset)
+                    result += nsString.substring(with: gapRange)
+                }
+                
+                let token = nsString.substring(with: match.range)
+                
+                let processedToken: String
+                if token.count > 1 && token != "mc" && !VietnameseWordChecker.isVietnameseWord(token) {
+                    if token.contains("-") || token.contains(".") {
+                        var partsResult = ""
+                        var currentPart = ""
+                        for char in token {
+                            if char == "-" || char == "." {
+                                if !currentPart.isEmpty {
+                                    if !VietnameseWordChecker.isVietnameseWord(currentPart) {
+                                        partsResult += EnglishTransliterator.transliterateWord(currentPart)
+                                    } else {
+                                        partsResult += currentPart
+                                    }
+                                    currentPart = ""
+                                }
+                                partsResult.append(char)
+                            } else {
+                                currentPart.append(char)
+                            }
+                        }
+                        if !currentPart.isEmpty {
+                            if !VietnameseWordChecker.isVietnameseWord(currentPart) {
+                                partsResult += EnglishTransliterator.transliterateWord(currentPart)
+                            } else {
+                                partsResult += currentPart
+                            }
+                        }
+                        processedToken = partsResult
+                    } else {
+                        processedToken = EnglishTransliterator.transliterateWord(token)
+                    }
+                } else {
+                    processedToken = token
+                }
+                
+                result += processedToken
+                lastOffset = match.range.location + match.range.length
+            }
+            
+            if lastOffset < nsString.length {
+                let gapRange = NSRange(location: lastOffset, length: nsString.length - lastOffset)
                 result += nsString.substring(with: gapRange)
             }
             
-            let token = nsString.substring(with: match.range)
-            let replaced = Self.processToken(token, localAcronyms: localAcronyms, localWordMap: localWordMap, enableTransliteration: enableTransliteration)
-            result += replaced
-            
-            lastOffset = match.range.location + match.range.length
+            return result
         }
         
-        if lastOffset < nsString.length {
-            let gapRange = NSRange(location: lastOffset, length: nsString.length - lastOffset)
-            result += nsString.substring(with: gapRange)
-        }
-        
-        return result
+        return replacedText
     }
 }

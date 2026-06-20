@@ -12,7 +12,7 @@ struct ContentView: View {
     @State private var testSpeed = 1.0
     @State private var isSynthesizing = false
     @State private var testAudioPlayer: AVAudioPlayer? = nil
-    @State private var enableTransliteration = true
+    @State private var enableTransliteration = false
     @State private var disablePunctuationPauses = false
     @State private var isDownloadingAll = false
     @State private var downloadProgress = ""
@@ -96,7 +96,7 @@ struct ContentView: View {
 
                 Section("Test TTS") {
                     TextField("Text to synthesize", text: $testText, axis: .vertical)
-                        .lineLimit(1...5)
+                        .lineLimit(3...10)
                     
                     Slider(value: $testSpeed, in: 0.5...2.0, step: 0.1) {
                         Text("Speed")

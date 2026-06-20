@@ -19,7 +19,7 @@ final class PiperTTSService {
         self.engine = engine
     }
 
-    func synthesize(text: String, voice: String, speed: Double, disablePunctuationPauses: Bool = false, enableTransliteration: Bool = true) async throws -> Data {
+    func synthesize(text: String, voice: String, speed: Double, disablePunctuationPauses: Bool = false, enableTransliteration: Bool = false) async throws -> Data {
         let voiceId = voice.toASCIIID
         let modelONNX = modelStore.modelURL(for: voiceId, extension: "onnx")
         let modelConfig = modelStore.modelURL(for: voiceId, extension: "onnx.json")

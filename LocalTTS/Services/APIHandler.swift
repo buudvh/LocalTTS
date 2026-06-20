@@ -117,7 +117,7 @@ final class APIHandler {
                 }
 
                 let disablePunctuationPauses = body.disablePunctuationPauses ?? false
-                let enableTransliteration = body.enableTransliteration ?? true
+                let enableTransliteration = body.enableTransliteration ?? false
 
                 let audio = try await ttsService.synthesize(
                     text: text,

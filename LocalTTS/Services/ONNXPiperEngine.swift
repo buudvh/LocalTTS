@@ -35,6 +35,65 @@ final class ONNXPiperEngine: PiperEngine {
         return (env, session)
     }
 
+    private func chunkText(_ text: String) -> [String] {
+        let lines = text.components(separatedBy: .newlines)
+        var chunks: [String] = []
+        
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+            
+            let endsWithPunct = trimmed.range(of: "[.!?]$", options: .regularExpression) != nil
+            let processedLine = endsWithPunct ? trimmed : trimmed + "."
+            
+            let pattern = "(?<=[.!?])(?=\\s+|$)"
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                let nsString = processedLine as NSString
+                let matches = regex.matches(in: processedLine, options: [], range: NSRange(location: 0, length: nsString.length))
+                var lastIndex = 0
+                for match in matches {
+                    let range = NSRange(location: lastIndex, length: match.range.location - lastIndex)
+                    let sentence = nsString.substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !sentence.isEmpty {
+                        chunks.append(sentence)
+                    }
+                    lastIndex = match.range.location
+                }
+                if lastIndex < nsString.length {
+                    let sentence = nsString.substring(from: lastIndex).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !sentence.isEmpty {
+                        chunks.append(sentence)
+                    }
+                }
+            } else {
+                chunks.append(processedLine)
+            }
+        }
+        return chunks
+    }
+
+    private func trimSilence(_ samples: [Float], threshold: Float = 0.002, minSamples: Int = 441) -> [Float] {
+        guard !samples.isEmpty else { return [] }
+        var start = 0
+        var end = samples.count - 1
+        while start < end && abs(samples[start]) < threshold { start += 1 }
+        while end > start && abs(samples[end]) < threshold { end -= 1 }
+        start = max(0, start - minSamples)
+        end = min(samples.count - 1, end + minSamples)
+        if start > end { return [] }
+        return Array(samples[start...end])
+    }
+
+    private func normalizePeak(_ samples: inout [Float], target: Float = 0.9) {
+        guard !samples.isEmpty else { return }
+        var maxVal: Float = 1e-9
+        for s in samples { maxVal = max(maxVal, abs(s)) }
+        let gain = min(4.0, target / maxVal)
+        for i in 0..<samples.count {
+            samples[i] *= gain
+        }
+    }
+
     func synthesize(text: String, modelONNX: URL, modelConfig: URL, speed: Double, disablePunctuationPauses: Bool) async throws -> Data {
         // 1. Đọc và phân tích cú pháp tệp cấu hình JSON
         guard let configData = try? Data(contentsOf: modelConfig) else {
@@ -53,34 +112,7 @@ final class ONNXPiperEngine: PiperEngine {
         let bosId = phonemeIdMap["^"]?.first ?? 1
         let eosId = phonemeIdMap["$"]?.first ?? 2
         
-        // 2. Chuyển văn bản sang âm vị sử dụng eSpeak NG
-        var processedText = text
-        if disablePunctuationPauses {
-            let punctuationSet = CharacterSet(charactersIn: ",.?!;:()[]{}\"'-—–")
-            processedText = text.components(separatedBy: punctuationSet).joined(separator: " ")
-        }
-        let phonemes = try EspeakPhonemizer.phonemize(text: processedText)
-        
-        // 3. Ánh xạ âm vị sang mảng Phoneme IDs theo chuẩn VITS (BOS, PAD, P1, PAD, P2, ..., EOS)
-        var phonemeIds: [Int64] = []
-        phonemeIds.append(Int64(bosId))
-        phonemeIds.append(Int64(padId))
-        
-        // Duyệt theo từng Unicode Scalar để tránh tách sai các ký tự ghép trong IPA
-        for scalar in phonemes.unicodeScalars {
-            let phonemeStr = String(scalar)
-            if let ids = phonemeIdMap[phonemeStr] {
-                for id in ids {
-                    phonemeIds.append(Int64(id))
-                    phonemeIds.append(Int64(padId))
-                }
-            } else {
-                appLog("Warning: Missing phoneme mapping for: \(phonemeStr)")
-            }
-        }
-        phonemeIds.append(Int64(eosId))
-        
-        // 4. Lấy môi trường và Session từ cache (hoặc khởi tạo mới nếu đổi model)
+        // Lấy môi trường và Session từ cache (hoặc khởi tạo mới nếu đổi model)
         let (_, session) = try getSession(modelONNX: modelONNX)
         
         let inputNames = try session.inputNames()
@@ -89,91 +121,142 @@ final class ONNXPiperEngine: PiperEngine {
             throw APIError.internalError("Model has no output names.")
         }
         
-        // 5. Chuẩn bị các Tensor đầu vào
-        // Input 1: "input" -> shape [1, phoneme_count]
-        let inputShape: [NSNumber] = [1, NSNumber(value: phonemeIds.count)]
-        let inputData = phonemeIds.withUnsafeBufferPointer { buffer in
-            guard let baseAddress = buffer.baseAddress else { return Data() }
-            return Data(bytes: baseAddress, count: buffer.count * MemoryLayout<Int64>.size)
+        // Tách câu để xử lý tuần tự
+        let chunks = chunkText(text)
+        guard !chunks.isEmpty else {
+            return WAVEncoder.encodePCM16(samples: [], sampleRate: sampleRate, channels: 1)
         }
-        let inputTensor = try ORTValue(
-            tensorData: NSMutableData(data: inputData),
-            elementType: ORTTensorElementDataType.int64,
-            shape: inputShape
-        )
         
-        // Input 2: "input_lengths" -> shape [1]
-        let inputLengthValue: Int64 = Int64(phonemeIds.count)
-        let lengthShape: [NSNumber] = [1]
-        let lengthData = withUnsafePointer(to: inputLengthValue) { ptr in
-            Data(bytes: ptr, count: MemoryLayout<Int64>.size)
-        }
-        let lengthTensor = try ORTValue(
-            tensorData: NSMutableData(data: lengthData),
-            elementType: ORTTensorElementDataType.int64,
-            shape: lengthShape
-        )
+        var mergedSamples: [Float] = []
+        let minSamples = Int(Double(sampleRate) * 0.02) // 20ms safety margin
         
-        // Input 3: "scales" -> shape [3] -> [noise_scale, length_scale, noise_w]
-        let noiseScale: Float = 0.667
-        let lengthScale: Float = Float(1.0 / speed)
-        let noiseW: Float = 0.8
-        let scales = [noiseScale, lengthScale, noiseW]
-        let scalesShape: [NSNumber] = [3]
-        let scalesData = scales.withUnsafeBufferPointer { buffer in
-            guard let baseAddress = buffer.baseAddress else { return Data() }
-            return Data(bytes: baseAddress, count: buffer.count * MemoryLayout<Float>.size)
-        }
-        let scalesTensor = try ORTValue(
-            tensorData: NSMutableData(data: scalesData),
-            elementType: ORTTensorElementDataType.float,
-            shape: scalesShape
-        )
-        
-        var feeds: [String: ORTValue] = [
-            "input": inputTensor,
-            "input_lengths": lengthTensor,
-            "scales": scalesTensor
-        ]
-        
-        // Hỗ trợ mô hình đa giọng đọc (Multi-speaker) nếu có yêu cầu "sid" (Speaker ID)
-        if inputNames.contains("sid") {
-            let speakerId: Int64 = 0
-            let sidShape: [NSNumber] = [1]
-            let sidData = withUnsafePointer(to: speakerId) { ptr in
+        for chunk in chunks {
+            // Chuyển văn bản sang âm vị sử dụng eSpeak NG cho từng câu
+            var processedText = chunk
+            if disablePunctuationPauses {
+                let punctuationSet = CharacterSet(charactersIn: ",.?!;:()[]{}\"'-—–")
+                processedText = chunk.components(separatedBy: punctuationSet).joined(separator: " ")
+            }
+            
+            let rawPhonemes = try EspeakPhonemizer.phonemize(text: processedText)
+            
+            // Làm sạch các ký tự điều khiển của eSpeak
+            let phonemes = rawPhonemes
+                .replacingOccurrences(of: "(en)", with: "")
+                .replacingOccurrences(of: "(vi)", with: "")
+            
+            // Ánh xạ âm vị sang mảng Phoneme IDs theo chuẩn VITS (BOS, PAD, P1, PAD, P2, ..., EOS)
+            var phonemeIds: [Int64] = []
+            phonemeIds.append(Int64(bosId))
+            phonemeIds.append(Int64(padId))
+            
+            // Duyệt theo từng Unicode Scalar để tránh tách sai các ký tự ghép trong IPA
+            for scalar in phonemes.unicodeScalars {
+                let phonemeStr = String(scalar)
+                if let ids = phonemeIdMap[phonemeStr] {
+                    for id in ids {
+                        phonemeIds.append(Int64(id))
+                        phonemeIds.append(Int64(padId))
+                    }
+                } else {
+                    appLog("Warning: Missing phoneme mapping for: \(phonemeStr)")
+                }
+            }
+            phonemeIds.append(Int64(eosId))
+            
+            // Chuẩn bị các Tensor đầu vào
+            // Input 1: "input" -> shape [1, phoneme_count]
+            let inputShape: [NSNumber] = [1, NSNumber(value: phonemeIds.count)]
+            let inputData = phonemeIds.withUnsafeBufferPointer { buffer in
+                guard let baseAddress = buffer.baseAddress else { return Data() }
+                return Data(bytes: baseAddress, count: buffer.count * MemoryLayout<Int64>.size)
+            }
+            let inputTensor = try ORTValue(
+                tensorData: NSMutableData(data: inputData),
+                elementType: ORTTensorElementDataType.int64,
+                shape: inputShape
+            )
+            
+            // Input 2: "input_lengths" -> shape [1]
+            let inputLengthValue: Int64 = Int64(phonemeIds.count)
+            let lengthShape: [NSNumber] = [1]
+            let lengthData = withUnsafePointer(to: inputLengthValue) { ptr in
                 Data(bytes: ptr, count: MemoryLayout<Int64>.size)
             }
-            let sidTensor = try ORTValue(
-                tensorData: NSMutableData(data: sidData),
+            let lengthTensor = try ORTValue(
+                tensorData: NSMutableData(data: lengthData),
                 elementType: ORTTensorElementDataType.int64,
-                shape: sidShape
+                shape: lengthShape
             )
-            feeds["sid"] = sidTensor
+            
+            // Input 3: "scales" -> shape [3] -> [noise_scale, length_scale, noise_w]
+            let noiseScale: Float = 0.667
+            let lengthScale: Float = Float(1.0 / speed)
+            let noiseW: Float = 0.8
+            let scales = [noiseScale, lengthScale, noiseW]
+            let scalesShape: [NSNumber] = [3]
+            let scalesData = scales.withUnsafeBufferPointer { buffer in
+                guard let baseAddress = buffer.baseAddress else { return Data() }
+                return Data(bytes: baseAddress, count: buffer.count * MemoryLayout<Float>.size)
+            }
+            let scalesTensor = try ORTValue(
+                tensorData: NSMutableData(data: scalesData),
+                elementType: ORTTensorElementDataType.float,
+                shape: scalesShape
+            )
+            
+            var feeds: [String: ORTValue] = [
+                "input": inputTensor,
+                "input_lengths": lengthTensor,
+                "scales": scalesTensor
+            ]
+            
+            // Hỗ trợ mô hình đa giọng đọc (Multi-speaker) nếu có yêu cầu "sid" (Speaker ID)
+            if inputNames.contains("sid") {
+                let speakerId: Int64 = 0
+                let sidShape: [NSNumber] = [1]
+                let sidData = withUnsafePointer(to: speakerId) { ptr in
+                    Data(bytes: ptr, count: MemoryLayout<Int64>.size)
+                }
+                let sidTensor = try ORTValue(
+                    tensorData: NSMutableData(data: sidData),
+                    elementType: ORTTensorElementDataType.int64,
+                    shape: sidShape
+                )
+                feeds["sid"] = sidTensor
+            }
+            
+            // Chạy suy luận (Run Inference)
+            let outputs = try session.run(
+                withInputs: feeds,
+                outputNames: [firstOutputName],
+                runOptions: nil
+            )
+            
+            guard let outputValue = outputs[firstOutputName] else {
+                throw APIError.internalError("Model did not return speech '\(firstOutputName)' tensor.")
+            }
+            
+            let outputData = try outputValue.tensorData() as Data
+            
+            // Chuyển đổi dữ liệu sang mảng PCM Float [-1.0, 1.0]
+            let samplesCount = outputData.count / MemoryLayout<Float>.size
+            var chunkSamples = [Float](repeating: 0.0, count: samplesCount)
+            _ = chunkSamples.withUnsafeMutableBytes { samplesBuffer in
+                outputData.copyBytes(to: samplesBuffer)
+            }
+            
+            // Cắt khoảng lặng cho phân đoạn
+            let trimmedChunk = trimSilence(chunkSamples, threshold: 0.002, minSamples: minSamples)
+            mergedSamples.append(contentsOf: trimmedChunk)
         }
         
-        // 6. Chạy suy luận (Run Inference)
-        let outputs = try session.run(
-            withInputs: feeds,
-            outputNames: [firstOutputName],
-            runOptions: nil
-        )
+        // Chuẩn hóa đỉnh âm lượng
+        normalizePeak(&mergedSamples, target: 0.9)
         
-        guard let outputValue = outputs[firstOutputName] else {
-            throw APIError.internalError("Model did not return speech '\(firstOutputName)' tensor.")
-        }
-        
-        let outputData = try outputValue.tensorData() as Data
-        
-        // 7. Chuyển đổi dữ liệu nhị phân đầu ra sang mảng PCM Float [-1.0, 1.0]
-        let samplesCount = outputData.count / MemoryLayout<Float>.size
-        var samples = [Float](repeating: 0.0, count: samplesCount)
-        _ = samples.withUnsafeMutableBytes { samplesBuffer in
-            outputData.copyBytes(to: samplesBuffer)
-        }
-        
-        // 8. Đóng gói thành tệp WAV PCM 16-bit
+        // Đóng gói thành tệp WAV
         let wavData = WAVEncoder.encodePCM16(
-            samples: samples,
+            samples: mergedSamples,
             sampleRate: sampleRate,
             channels: 1
         )
