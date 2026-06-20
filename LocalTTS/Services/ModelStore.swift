@@ -67,4 +67,22 @@ final class ModelStore {
             return partial + Int64(size)
         }
     }
+
+    func getLocalVoiceIDs() -> [String] {
+        let files = (try? fileManager.contentsOfDirectory(
+            at: modelsURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        
+        let onnxFiles = files.filter { $0.pathExtension == "onnx" }
+        var voiceIds: [String] = []
+        for file in onnxFiles {
+            let voiceId = file.deletingPathExtension().lastPathComponent
+            if modelExists(for: voiceId) {
+                voiceIds.append(voiceId)
+            }
+        }
+        return voiceIds
+    }
 }

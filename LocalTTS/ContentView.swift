@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
@@ -13,9 +14,13 @@ struct ContentView: View {
     @State private var isSynthesizing = false
     @State private var testAudioPlayer: AVAudioPlayer? = nil
     @State private var enableTransliteration = false
-    @State private var disablePunctuationPauses = false
     @State private var isDownloadingAll = false
     @State private var downloadProgress = ""
+    @State private var isShowingFileImporter = false
+    
+    @AppStorage("newlinePauseDuration") private var newlinePause = 0.5
+    @AppStorage("sentencePauseDuration") private var sentencePause = 0.4
+    @AppStorage("phrasePauseDuration") private var phrasePause = 0.15
 
     var body: some View {
         NavigationStack {
@@ -63,6 +68,10 @@ struct ContentView: View {
                         Task { await loadVoices(forceRefresh: true) }
                     }
 
+                    Button("Nhập Model Ngoài...") {
+                        isShowingFileImporter = true
+                    }
+
                     Button("Prefetch Selected Model") {
                         Task { await prefetchSelectedVoice() }
                     }
@@ -75,6 +84,7 @@ struct ContentView: View {
                         .disabled(isDownloadingAll)
                     }
 
+                    /*
                     Button("Cập nhật từ điển tiếng Anh") {
                         Task {
                             prefetchStatus = "Đang tải từ điển..."
@@ -92,11 +102,24 @@ struct ContentView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    */
                 }
 
                 Section("Test TTS") {
-                    TextField("Text to synthesize", text: $testText, axis: .vertical)
-                        .lineLimit(3...10)
+                    HStack {
+                        TextField("Text to synthesize", text: $testText, axis: .vertical)
+                            .lineLimit(3...10)
+                        
+                        if !testText.isEmpty {
+                            Button(action: {
+                                testText = ""
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                     
                     Slider(value: $testSpeed, in: 0.5...2.0, step: 0.1) {
                         Text("Speed")
@@ -110,13 +133,46 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Toggle("Dịch phiên âm tiếng Anh", isOn: $enableTransliteration)
-                    Toggle("Không ngắt khi gặp dấu câu", isOn: $disablePunctuationPauses)
+                    // Toggle("Dịch phiên âm tiếng Anh", isOn: $enableTransliteration)
                     
                     Button(isSynthesizing ? "Synthesizing..." : "Speak") {
                         Task { await testTTS() }
                     }
                     .disabled(isSynthesizing || testText.trimmed.isEmpty)
+                }
+
+                Section("Cấu hình khoảng ngắt (giây)") {
+                    HStack {
+                        Text("Xuống dòng:")
+                        Spacer()
+                        TextField("", value: $newlinePause, format: .number)
+                            .keyboardType(.decimalPad)
+                            .frame(width: 80)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
+                        Text("Cuối câu (. ! ?):")
+                        Spacer()
+                        TextField("", value: $sentencePause, format: .number)
+                            .keyboardType(.decimalPad)
+                            .frame(width: 80)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
+                        Text("Giữa câu / Ngoặc:")
+                        Spacer()
+                        TextField("", value: $phrasePause, format: .number)
+                            .keyboardType(.decimalPad)
+                            .frame(width: 80)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    
+                    Button("Đặt lại mặc định") {
+                        newlinePause = 0.5
+                        sentencePause = 0.4
+                        phrasePause = 0.15
+                    }
+                    .foregroundStyle(.red)
                 }
 
                 Section("Engine") {
@@ -146,6 +202,20 @@ struct ContentView: View {
             .sheet(isPresented: $isShowingLogs) {
                 LogView()
             }
+            .fileImporter(
+                isPresented: $isShowingFileImporter,
+                allowedContentTypes: [.item],
+                allowsMultipleSelection: true
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    Task {
+                        await importModels(from: urls)
+                    }
+                case .failure(let error):
+                    appState.lastError = "Import failed: \(error.localizedDescription)"
+                }
+            }
         }
     }
 
@@ -154,13 +224,74 @@ struct ContentView: View {
         defer { isLoadingVoices = false }
 
         do {
-            voices = try await appState.nghiClient.fetchVietnameseVoices(forceRefresh: forceRefresh)
+            let remoteVoices = try await appState.nghiClient.fetchVietnameseVoices(forceRefresh: forceRefresh)
+            let localVoiceIds = appState.modelStore.getLocalVoiceIDs()
+            var allVoices = remoteVoices
+            
+            for voiceId in localVoiceIds {
+                if !allVoices.contains(where: { $0.id == voiceId }) {
+                    let displayName = voiceId.replacingOccurrences(of: "_", with: " ").capitalized
+                    allVoices.append(Voice(id: voiceId, name: displayName + " (Imported)"))
+                }
+            }
+            
+            voices = allVoices
             if !voices.contains(selectedVoice), let first = voices.first {
                 selectedVoice = first
             }
         } catch {
             appState.lastError = error.localizedDescription
         }
+    }
+
+    private func importModels(from urls: [URL]) async {
+        let fm = FileManager.default
+        var importCount = 0
+        var errorCount = 0
+        
+        for url in urls {
+            let access = url.startAccessingSecurityScopedResource()
+            defer {
+                if access {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            
+            let ext = url.pathExtension.lowercased()
+            let filename = url.lastPathComponent
+            
+            do {
+                let targetURL: URL
+                if ext == "onnx" {
+                    let voiceId = url.deletingPathExtension().lastPathComponent.toASCIIID
+                    targetURL = appState.modelStore.modelURL(for: voiceId, extension: "onnx")
+                } else if ext == "json" {
+                    let baseName = url.deletingPathExtension().lastPathComponent
+                    let voiceId: String
+                    if baseName.lowercased().hasSuffix(".onnx") {
+                        voiceId = String(baseName.dropLast(5)).toASCIIID
+                    } else {
+                        voiceId = baseName.toASCIIID
+                    }
+                    targetURL = appState.modelStore.modelURL(for: voiceId, extension: "onnx.json")
+                } else {
+                    continue
+                }
+                
+                if fm.fileExists(atPath: targetURL.path) {
+                    try fm.removeItem(at: targetURL)
+                }
+                
+                try fm.copyItem(at: url, to: targetURL)
+                importCount += 1
+            } catch {
+                appLog("Failed to import file \(filename): \(error.localizedDescription)")
+                errorCount += 1
+            }
+        }
+        
+        appLog("Imported \(importCount) files. Errors: \(errorCount)")
+        await loadVoices(forceRefresh: false)
     }
 
     private func prefetchSelectedVoice() async {
@@ -202,7 +333,6 @@ struct ContentView: View {
                 text: testText,
                 voice: selectedVoice.name,
                 speed: testSpeed,
-                disablePunctuationPauses: disablePunctuationPauses,
                 enableTransliteration: enableTransliteration
             )
             

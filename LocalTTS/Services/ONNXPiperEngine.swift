@@ -42,7 +42,7 @@ final class ONNXPiperEngine: PiperEngine {
 
     private func chunkTextWithPunctuation(_ text: String) -> [TextChunk] {
         let nsString = text as NSString
-        let pattern = "(?:\\r?\\n)+|(?<!\\d)\\.|\\.(?!\\d)|!|\\?|(?<!\\d),|,(?!\\d)|;|:"
+        let pattern = "(?:\\r?\\n)+|(?<!\\d)\\.|\\.(?!\\d)|!|\\?|(?<!\\d),|,(?!\\d)|;|:|[「」『』【】［］]"
         
         guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
             return [TextChunk(text: text, punctuation: "")]
@@ -82,17 +82,21 @@ final class ONNXPiperEngine: PiperEngine {
         let trimmed = punctuation.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             if punctuation.contains("\n") || punctuation.contains("\r") {
-                return 0.8
+                return UserDefaults.standard.double(forKey: "newlinePauseDuration")
             }
             return 0.0
         }
         
         if trimmed.contains(".") || trimmed.contains("!") || trimmed.contains("?") {
-            return 0.7
+            return UserDefaults.standard.double(forKey: "sentencePauseDuration")
         }
         
-        if trimmed.contains(",") || trimmed.contains(";") || trimmed.contains(":") {
-            return 0.3
+        if trimmed.contains(",") || trimmed.contains(";") || trimmed.contains(":") ||
+           trimmed.contains("「") || trimmed.contains("」") ||
+           trimmed.contains("『") || trimmed.contains("』") ||
+           trimmed.contains("【") || trimmed.contains("】") ||
+           trimmed.contains("［") || trimmed.contains("］") {
+            return UserDefaults.standard.double(forKey: "phrasePauseDuration")
         }
         
         return 0.0
@@ -120,7 +124,7 @@ final class ONNXPiperEngine: PiperEngine {
         }
     }
 
-    func synthesize(text: String, modelONNX: URL, modelConfig: URL, speed: Double, disablePunctuationPauses: Bool) async throws -> Data {
+    func synthesize(text: String, modelONNX: URL, modelConfig: URL, speed: Double) async throws -> Data {
         // 1. Đọc và phân tích cú pháp tệp cấu hình JSON
         guard let configData = try? Data(contentsOf: modelConfig) else {
             throw APIError.internalError("Cannot read Piper config file: \(modelConfig.lastPathComponent)")
@@ -158,11 +162,7 @@ final class ONNXPiperEngine: PiperEngine {
         
         for (index, chunk) in chunks.enumerated() {
             // Chuyển văn bản sang âm vị sử dụng eSpeak NG cho từng câu
-            var processedText = chunk.text
-            if disablePunctuationPauses {
-                let punctuationSet = CharacterSet(charactersIn: ",.?!;:()[]{}\"'-—–")
-                processedText = processedText.components(separatedBy: punctuationSet).joined(separator: " ")
-            }
+            let processedText = chunk.text
             
             let rawPhonemes = try EspeakPhonemizer.phonemize(text: processedText)
             
@@ -278,10 +278,7 @@ final class ONNXPiperEngine: PiperEngine {
             
             // Chèn khoảng lặng tĩnh dựa theo dấu câu và tốc độ (chỉ chèn nếu chưa phải là chunk cuối)
             if index < chunks.count - 1 {
-                var pauseDurationSec: Double = 0.0
-                if !disablePunctuationPauses {
-                    pauseDurationSec = self.pauseDuration(for: chunk.punctuation)
-                }
+                let pauseDurationSec = self.pauseDuration(for: chunk.punctuation)
                 if pauseDurationSec > 0.0 {
                     let scaledDuration = pauseDurationSec / speed
                     let silenceSamplesCount = Int(Double(sampleRate) * scaledDuration)

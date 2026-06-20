@@ -116,14 +116,12 @@ final class APIHandler {
                     throw APIError.badRequest("Giọng đọc '\(voiceName)' chưa được tải về server. Vui lòng tải model trên ứng dụng trước khi sử dụng.")
                 }
 
-                let disablePunctuationPauses = body.disablePunctuationPauses ?? false
                 let enableTransliteration = body.enableTransliteration ?? false
 
                 let audio = try await ttsService.synthesize(
                     text: text,
                     voice: voiceName,
                     speed: speed,
-                    disablePunctuationPauses: disablePunctuationPauses,
                     enableTransliteration: enableTransliteration
                 )
                 return HTTPResponse(
