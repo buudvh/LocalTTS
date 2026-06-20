@@ -8,7 +8,8 @@ struct LocalTTSApp: App {
         UserDefaults.standard.register(defaults: [
             "newlinePauseDuration": 0.5,
             "sentencePauseDuration": 0.4,
-            "phrasePauseDuration": 0.15
+            "phrasePauseDuration": 0.15,
+            "bracketPauseDuration": 0.15
         ])
     }
 

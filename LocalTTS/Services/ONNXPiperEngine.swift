@@ -42,7 +42,7 @@ final class ONNXPiperEngine: PiperEngine {
 
     private func chunkTextWithPunctuation(_ text: String) -> [TextChunk] {
         let nsString = text as NSString
-        let pattern = "(?:\\r?\\n)+|(?<!\\d)\\.|\\.(?!\\d)|!|\\?|(?<!\\d),|,(?!\\d)|;|:|[「」『』【】［］]"
+        let pattern = "(?:\\r?\\n)+|(?<!\\d)\\.|\\.(?!\\d)|!|\\?|(?<!\\d),|,(?!\\d)|;|:|[「」『』【】［］()\\{\\}\\[\\]]"
         
         guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
             return [TextChunk(text: text, punctuation: "")]
@@ -91,11 +91,17 @@ final class ONNXPiperEngine: PiperEngine {
             return UserDefaults.standard.double(forKey: "sentencePauseDuration")
         }
         
-        if trimmed.contains(",") || trimmed.contains(";") || trimmed.contains(":") ||
+        if trimmed.contains("(") || trimmed.contains(")") ||
+           trimmed.contains("[") || trimmed.contains("]") ||
+           trimmed.contains("{") || trimmed.contains("}") ||
            trimmed.contains("「") || trimmed.contains("」") ||
            trimmed.contains("『") || trimmed.contains("』") ||
            trimmed.contains("【") || trimmed.contains("】") ||
            trimmed.contains("［") || trimmed.contains("］") {
+            return UserDefaults.standard.double(forKey: "bracketPauseDuration")
+        }
+        
+        if trimmed.contains(",") || trimmed.contains(";") || trimmed.contains(":") {
             return UserDefaults.standard.double(forKey: "phrasePauseDuration")
         }
         
@@ -255,7 +261,7 @@ final class ONNXPiperEngine: PiperEngine {
             // Chạy suy luận (Run Inference)
             let outputs = try session.run(
                 withInputs: feeds,
-                outputNames: [firstOutputName],
+                outputNames: Set([firstOutputName]),
                 runOptions: nil
             )
             
