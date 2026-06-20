@@ -497,8 +497,7 @@ final class TextPreprocessor {
     static let shared = TextPreprocessor()
     
     private var wordMap: [String: String] = [:]
-    private var sortedWordList: [(key: String, value: String)] = []
-    private var acronymMap: [(key: String, value: String)] = []
+    private var acronymMap: [String: String] = [:]
     private let lock = NSLock()
     
     private init() {
@@ -520,8 +519,7 @@ final class TextPreprocessor {
             let acronymsURL = rootURL.appendingPathComponent("acronyms.csv")
             
             if fileManager.fileExists(atPath: wordsURL.path) {
-                sortedWordList = Self.loadCSV(from: wordsURL)
-                wordMap = Dictionary(uniqueKeysWithValues: sortedWordList.map { ($0.key, $0.value) })
+                wordMap = Self.loadCSV(from: wordsURL)
                 wordsLoaded = true
             }
             if fileManager.fileExists(atPath: acronymsURL.path) {
@@ -533,8 +531,7 @@ final class TextPreprocessor {
         // 2. Fallback to Bundle resources if not loaded
         if !wordsLoaded {
             if let bundleURL = Bundle.main.url(forResource: "non-vietnamese-words", withExtension: "csv") {
-                sortedWordList = Self.loadCSV(from: bundleURL)
-                wordMap = Dictionary(uniqueKeysWithValues: sortedWordList.map { ($0.key, $0.value) })
+                wordMap = Self.loadCSV(from: bundleURL)
             }
         }
         if !acronymsLoaded {
@@ -543,14 +540,14 @@ final class TextPreprocessor {
             }
         }
         
-        appLog("Loaded \(sortedWordList.count) non-Vietnamese words and \(acronymMap.count) acronyms.")
+        appLog("Loaded \(wordMap.count) non-Vietnamese words and \(acronymMap.count) acronyms.")
     }
     
     // MARK: - CSV Loading Helper
-    private static func loadCSV(from url: URL) -> [(key: String, value: String)] {
+    private static func loadCSV(from url: URL) -> [String: String] {
         guard let content = try? String(contentsOf: url, encoding: .utf8) else {
             appLog("Warning: Could not read CSV file at \(url.path)")
-            return []
+            return [:]
         }
         
         var map = [String: String]()
@@ -568,7 +565,7 @@ final class TextPreprocessor {
             }
         }
         
-        return map.map { (key: $0.key, value: $0.value) }.sorted { $0.key.count > $1.key.count }
+        return map
     }
     
     // MARK: - Regex Replacement Helper
@@ -1169,77 +1166,47 @@ final class TextPreprocessor {
         return e
     }
 
-    // MARK: - Acronym Replacement
-    private static func replaceAcronyms(_ text: String, map: [(key: String, value: String)]) -> String {
-        var r = text
-        for entry in map {
-            let escapedKey = NSRegularExpression.escapedPattern(for: entry.key)
-            let pattern = "\\b\(escapedKey)\\b"
-            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
-                r = regex.stringByReplacingMatches(in: r, options: [], range: NSRange(location: 0, length: r.utf16.count), withTemplate: entry.value)
-            }
-        }
-        return r
-    }
+    private static let tokenRegex = try! NSRegularExpression(
+        pattern: "[a-zA-Z0-9_\\u{00C0}-\\u{1EFF}]+(?:[-.][a-zA-Z0-9_\\u{00C0}-\\u{1EFF}]+)*",
+        options: []
+    )
 
-    // MARK: - CSV Word Replacement
-    private static func replaceCSVWords(_ text: String, map: [(key: String, value: String)]) -> String {
-        var r = text
-        for entry in map {
-            let escapedKey = NSRegularExpression.escapedPattern(for: entry.key)
-            let pattern = "\\b\(escapedKey)\\b"
-            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
-                r = regex.stringByReplacingMatches(in: r, options: [], range: NSRange(location: 0, length: r.utf16.count), withTemplate: entry.value)
-            }
-        }
-        return r
-    }
-
-    // MARK: - Transliteration
-    private static func transliterateEnglishWords(_ text: String, csvMap: [String: String]) -> String {
-        var t = text
-        let wordRegex = try! NSRegularExpression(pattern: "([a-zA-Z0-9_\\u{00C0}-\\u{1EFF}]+)", options: [])
-        let matches = wordRegex.matches(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count))
-        
-        var seen = Set<String>()
-        let nsText = text as NSString
-        var wordsToTransliterate: [String] = []
-        
-        for match in matches {
-            let word = nsText.substring(with: match.range)
-            let lowerWord = word.lowercased()
-            if seen.contains(lowerWord) { continue }
-            seen.insert(lowerWord)
-            
-            if csvMap[lowerWord] != nil { continue }
-            
-            if VietnameseWordChecker.isVietnameseWord(word) || VietnameseWordChecker.isVietnameseWord(lowerWord) {
-                continue
-            }
-            if word.count == 1 { continue }
-            if ["mc"].contains(lowerWord) { continue }
-            
-            wordsToTransliterate.append(word)
+    private static func processToken(_ token: String, localAcronyms: [String: String], localWordMap: [String: String], enableTransliteration: Bool) -> String {
+        if let replaced = localAcronyms[token] {
+            return replaced
         }
         
-        for word in wordsToTransliterate {
-            let transliterated = EnglishTransliterator.transliterateWord(word)
-            let escapedWord = NSRegularExpression.escapedPattern(for: word)
-            let y = "[^a-zA-Z0-9_\\u{00C0}-\\u{1EFF}]"
-            let pattern = "(?:^|(\(y)))(\(escapedWord))(?=\(y)|$)"
-            
-            t = replaceMatches(in: t, pattern: pattern, options: [.caseInsensitive]) { match, ns in
-                let prefix = match.range(at: 1).location != NSNotFound ? ns.substring(with: match.range(at: 1)) : ""
-                let matchedWord = ns.substring(with: match.range(at: 2))
-                
-                let isCapitalized = matchedWord.first?.isUppercase == true
-                let replacement = isCapitalized ? (transliterated.first?.uppercased() ?? "") + transliterated.dropFirst() : transliterated
-                
-                return prefix + replacement
+        if let replaced = localWordMap[token] {
+            return replaced
+        }
+        
+        if token.contains("-") || token.contains(".") {
+            var result = ""
+            var currentPart = ""
+            for char in token {
+                if char == "-" || char == "." {
+                    if !currentPart.isEmpty {
+                        result += processToken(currentPart, localAcronyms: localAcronyms, localWordMap: localWordMap, enableTransliteration: enableTransliteration)
+                        currentPart = ""
+                    }
+                    result.append(char)
+                } else {
+                    currentPart.append(char)
+                }
+            }
+            if !currentPart.isEmpty {
+                result += processToken(currentPart, localAcronyms: localAcronyms, localWordMap: localWordMap, enableTransliteration: enableTransliteration)
+            }
+            return result
+        }
+        
+        if enableTransliteration {
+            if token.count > 1 && token != "mc" && !VietnameseWordChecker.isVietnameseWord(token) {
+                return EnglishTransliterator.transliterateWord(token)
             }
         }
         
-        return t
+        return token
     }
 
     // MARK: - Main Preprocess Pipeline
@@ -1253,16 +1220,31 @@ final class TextPreprocessor {
         
         lock.lock()
         let localAcronyms = acronymMap
-        let localCSVWords = sortedWordList
-        let localCSVWordMap = wordMap
+        let localWordMap = wordMap
         lock.unlock()
         
-        let afterAcronyms = Self.replaceAcronyms(lowercased, map: localAcronyms)
-        let afterCSVWords = Self.replaceCSVWords(afterAcronyms, map: localCSVWords)
+        let nsString = lowercased as NSString
+        let matches = Self.tokenRegex.matches(in: lowercased, options: [], range: NSRange(location: 0, length: nsString.length))
         
-        var result = afterCSVWords
-        if enableTransliteration {
-            result = Self.transliterateEnglishWords(afterCSVWords, csvMap: localCSVWordMap)
+        var result = ""
+        var lastOffset = 0
+        
+        for match in matches {
+            if match.range.location > lastOffset {
+                let gapRange = NSRange(location: lastOffset, length: match.range.location - lastOffset)
+                result += nsString.substring(with: gapRange)
+            }
+            
+            let token = nsString.substring(with: match.range)
+            let replaced = Self.processToken(token, localAcronyms: localAcronyms, localWordMap: localWordMap, enableTransliteration: enableTransliteration)
+            result += replaced
+            
+            lastOffset = match.range.location + match.range.length
+        }
+        
+        if lastOffset < nsString.length {
+            let gapRange = NSRange(location: lastOffset, length: nsString.length - lastOffset)
+            result += nsString.substring(with: gapRange)
         }
         
         return result

@@ -23,3 +23,7 @@ sample.wav
 *.p12
 *.mobileprovision
 ExportOptions.plist
+
+# CodeGraph
+.codegraph/
+
