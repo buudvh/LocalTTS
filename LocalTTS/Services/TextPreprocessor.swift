@@ -72,6 +72,7 @@ final class VietnameseWordChecker {
     }
 }
 
+/*
 // MARK: - English Transliterator
 final class EnglishTransliterator {
     static let sRules: [RegexRule] = [
@@ -491,6 +492,7 @@ final class VietnameseNumberSpeller {
         return e.map { String($0) }.map { S[Int($0) ?? 0] ?? String($0) }.joined(separator: " ")
     }
 }
+*/
 
 // MARK: - Text Preprocessor Service
 final class TextPreprocessor {
@@ -527,13 +529,16 @@ final class TextPreprocessor {
         // 1. Try loading from Application Support directory
         if let appSupport = try? fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
             let rootURL = appSupport.appendingPathComponent("LocalTTS", isDirectory: true)
-            let wordsURL = rootURL.appendingPathComponent("non-vietnamese-words.csv")
             let acronymsURL = rootURL.appendingPathComponent("acronyms.csv")
             
+            // Comment out non-vietnamese words loading to avoid overhead
+            /*
+            let wordsURL = rootURL.appendingPathComponent("non-vietnamese-words.csv")
             if fileManager.fileExists(atPath: wordsURL.path) {
                 wordMap = Self.loadCSV(from: wordsURL)
                 wordsLoaded = true
             }
+            */
             if fileManager.fileExists(atPath: acronymsURL.path) {
                 acronymMap = Self.loadCSV(from: acronymsURL)
                 acronymsLoaded = true
@@ -541,11 +546,14 @@ final class TextPreprocessor {
         }
         
         // 2. Fallback to Bundle resources if not loaded
+        // Comment out non-vietnamese words loading fallback
+        /*
         if !wordsLoaded {
             if let bundleURL = Bundle.main.url(forResource: "non-vietnamese-words", withExtension: "csv") {
                 wordMap = Self.loadCSV(from: bundleURL)
             }
         }
+        */
         if !acronymsLoaded {
             if let bundleURL = Bundle.main.url(forResource: "acronyms", withExtension: "csv") {
                 acronymMap = Self.loadCSV(from: bundleURL)
@@ -1269,8 +1277,9 @@ final class TextPreprocessor {
         let lowercased = processedVi.lowercased()
         
         // 1. Thay thế từ viết tắt (Acronyms) luôn luôn chạy
-        var replacedText = Self.replaceDictionaryWords(in: lowercased, type: .acronym)
+        let replacedText = Self.replaceDictionaryWords(in: lowercased, type: .acronym)
         
+        /* COMMENT OUT ALL ENGLISH PROCESSING CODE
         // 2. Nếu bật dịch phiên âm tiếng Anh, tiến hành khớp từ điển tiếng Anh và chạy bộ quy tắc
         if enableTransliteration {
             // Thay thế các từ từ từ điển tiếng Anh (non-vietnamese-words)
@@ -1336,6 +1345,7 @@ final class TextPreprocessor {
             
             return result
         }
+        */
         
         return replacedText
     }

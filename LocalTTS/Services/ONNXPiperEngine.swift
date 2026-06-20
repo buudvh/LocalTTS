@@ -35,41 +35,67 @@ final class ONNXPiperEngine: PiperEngine {
         return (env, session)
     }
 
-    private func chunkText(_ text: String) -> [String] {
-        let lines = text.components(separatedBy: .newlines)
-        var chunks: [String] = []
+    private struct TextChunk {
+        let text: String
+        let punctuation: String
+    }
+
+    private func chunkTextWithPunctuation(_ text: String) -> [TextChunk] {
+        let nsString = text as NSString
+        let pattern = "(?:\\r?\\n)+|(?<!\\d)\\.|\\.(?!\\d)|!|\\?|(?<!\\d),|,(?!\\d)|;|:"
         
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { continue }
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return [TextChunk(text: text, punctuation: "")]
+        }
+        
+        let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsString.length))
+        var chunks: [TextChunk] = []
+        var lastIndex = 0
+        
+        for match in matches {
+            let range = NSRange(location: lastIndex, length: match.range.location - lastIndex)
+            let chunkText = nsString.substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines)
+            let punctuation = nsString.substring(with: match.range)
             
-            let endsWithPunct = trimmed.range(of: "[.!?]$", options: .regularExpression) != nil
-            let processedLine = endsWithPunct ? trimmed : trimmed + "."
+            if !chunkText.isEmpty {
+                chunks.append(TextChunk(text: chunkText, punctuation: punctuation))
+            } else if !chunks.isEmpty {
+                let lastIdx = chunks.count - 1
+                let updatedPunct = chunks[lastIdx].punctuation + punctuation
+                chunks[lastIdx] = TextChunk(text: chunks[lastIdx].text, punctuation: updatedPunct)
+            }
             
-            let pattern = "(?<=[.!?])(?=\\s+|$)"
-            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
-                let nsString = processedLine as NSString
-                let matches = regex.matches(in: processedLine, options: [], range: NSRange(location: 0, length: nsString.length))
-                var lastIndex = 0
-                for match in matches {
-                    let range = NSRange(location: lastIndex, length: match.range.location - lastIndex)
-                    let sentence = nsString.substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !sentence.isEmpty {
-                        chunks.append(sentence)
-                    }
-                    lastIndex = match.range.location
-                }
-                if lastIndex < nsString.length {
-                    let sentence = nsString.substring(from: lastIndex).trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !sentence.isEmpty {
-                        chunks.append(sentence)
-                    }
-                }
-            } else {
-                chunks.append(processedLine)
+            lastIndex = match.range.location + match.range.length
+        }
+        
+        if lastIndex < nsString.length {
+            let chunkText = nsString.substring(from: lastIndex).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !chunkText.isEmpty {
+                chunks.append(TextChunk(text: chunkText, punctuation: ""))
             }
         }
+        
         return chunks
+    }
+
+    private func pauseDuration(for punctuation: String) -> Double {
+        let trimmed = punctuation.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            if punctuation.contains("\n") || punctuation.contains("\r") {
+                return 0.8
+            }
+            return 0.0
+        }
+        
+        if trimmed.contains(".") || trimmed.contains("!") || trimmed.contains("?") {
+            return 0.7
+        }
+        
+        if trimmed.contains(",") || trimmed.contains(";") || trimmed.contains(":") {
+            return 0.3
+        }
+        
+        return 0.0
     }
 
     private func trimSilence(_ samples: [Float], threshold: Float = 0.002, minSamples: Int = 441) -> [Float] {
@@ -121,8 +147,8 @@ final class ONNXPiperEngine: PiperEngine {
             throw APIError.internalError("Model has no output names.")
         }
         
-        // Tách câu để xử lý tuần tự
-        let chunks = chunkText(text)
+        // Tách câu để xử lý tuần tự kèm theo thông tin dấu câu để chèn khoảng lặng tĩnh
+        let chunks = chunkTextWithPunctuation(text)
         guard !chunks.isEmpty else {
             return WAVEncoder.encodePCM16(samples: [], sampleRate: sampleRate, channels: 1)
         }
@@ -130,12 +156,12 @@ final class ONNXPiperEngine: PiperEngine {
         var mergedSamples: [Float] = []
         let minSamples = Int(Double(sampleRate) * 0.02) // 20ms safety margin
         
-        for chunk in chunks {
+        for (index, chunk) in chunks.enumerated() {
             // Chuyển văn bản sang âm vị sử dụng eSpeak NG cho từng câu
-            var processedText = chunk
+            var processedText = chunk.text
             if disablePunctuationPauses {
                 let punctuationSet = CharacterSet(charactersIn: ",.?!;:()[]{}\"'-—–")
-                processedText = chunk.components(separatedBy: punctuationSet).joined(separator: " ")
+                processedText = processedText.components(separatedBy: punctuationSet).joined(separator: " ")
             }
             
             let rawPhonemes = try EspeakPhonemizer.phonemize(text: processedText)
@@ -249,6 +275,22 @@ final class ONNXPiperEngine: PiperEngine {
             // Cắt khoảng lặng cho phân đoạn
             let trimmedChunk = trimSilence(chunkSamples, threshold: 0.002, minSamples: minSamples)
             mergedSamples.append(contentsOf: trimmedChunk)
+            
+            // Chèn khoảng lặng tĩnh dựa theo dấu câu và tốc độ (chỉ chèn nếu chưa phải là chunk cuối)
+            if index < chunks.count - 1 {
+                var pauseDurationSec: Double = 0.0
+                if !disablePunctuationPauses {
+                    pauseDurationSec = self.pauseDuration(for: chunk.punctuation)
+                }
+                if pauseDurationSec > 0.0 {
+                    let scaledDuration = pauseDurationSec / speed
+                    let silenceSamplesCount = Int(Double(sampleRate) * scaledDuration)
+                    if silenceSamplesCount > 0 {
+                        let silenceSamples = [Float](repeating: 0.0, count: silenceSamplesCount)
+                        mergedSamples.append(contentsOf: silenceSamples)
+                    }
+                }
+            }
         }
         
         // Chuẩn hóa đỉnh âm lượng
