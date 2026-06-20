@@ -34,7 +34,7 @@ final class APIHandler {
                 ))
 
             case ("GET", "/v1/voices"):
-                let voices = try await nghiClient.fetchVietnameseVoices(forceRefresh: false)
+                let voices = try await nghiClient.getAllVoices(forceRefresh: false)
                 return try json(VoicesResponse(voices: voices.map { $0.name }, source: "nghitts.app", cached: true))
 
             case ("GET", "/logs"):
@@ -101,8 +101,8 @@ final class APIHandler {
                     ? body.voice!.trimmed.precomposedStringWithCanonicalMapping
                     : NghiTTSClient.defaultVietnameseVoice.name
 
-                let voices = try await nghiClient.fetchVietnameseVoices(forceRefresh: false)
-                guard voices.contains(where: { $0.name == voiceName }) else {
+                let voices = try await nghiClient.getAllVoices(forceRefresh: false)
+                guard let matchedVoice = voices.first(where: { $0.name == voiceName || $0.id == voiceName || $0.id == voiceName.toASCIIID }) else {
                     throw APIError.badRequest("Unsupported NghiTTS voice: \(voiceName)")
                 }
 
@@ -111,16 +111,16 @@ final class APIHandler {
                     throw APIError.badRequest("'speed' must be between 0.5 and 2.0.")
                 }
 
-                let voiceId = voiceName.toASCIIID
+                let voiceId = matchedVoice.id
                 guard modelStore.modelExists(for: voiceId) else {
-                    throw APIError.badRequest("Giọng đọc '\(voiceName)' chưa được tải về server. Vui lòng tải model trên ứng dụng trước khi sử dụng.")
+                    throw APIError.badRequest("Giọng đọc '\(matchedVoice.name)' chưa được tải về server. Vui lòng tải model trên ứng dụng trước khi sử dụng.")
                 }
 
                 let enableTransliteration = body.enableTransliteration ?? false
 
                 let audio = try await ttsService.synthesize(
                     text: text,
-                    voice: voiceName,
+                    voice: matchedVoice.name,
                     speed: speed,
                     enableTransliteration: enableTransliteration
                 )

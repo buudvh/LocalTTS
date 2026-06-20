@@ -224,17 +224,7 @@ struct ContentView: View {
         defer { isLoadingVoices = false }
 
         do {
-            let remoteVoices = try await appState.nghiClient.fetchVietnameseVoices(forceRefresh: forceRefresh)
-            let localVoiceIds = appState.modelStore.getLocalVoiceIDs()
-            var allVoices = remoteVoices
-            
-            for voiceId in localVoiceIds {
-                if !allVoices.contains(where: { $0.id == voiceId }) {
-                    let displayName = voiceId.replacingOccurrences(of: "_", with: " ").capitalized
-                    allVoices.append(Voice(id: voiceId, name: displayName + " (Imported)"))
-                }
-            }
-            
+            let allVoices = try await appState.nghiClient.getAllVoices(forceRefresh: forceRefresh)
             voices = allVoices
             if !voices.contains(selectedVoice), let first = voices.first {
                 selectedVoice = first

@@ -70,6 +70,20 @@ final class NghiTTSClient {
         }
     }
 
+    func getAllVoices(forceRefresh: Bool = false) async throws -> [Voice] {
+        let remoteVoices = try await fetchVietnameseVoices(forceRefresh: forceRefresh)
+        let localVoiceIds = modelStore.getLocalVoiceIDs()
+        var allVoices = remoteVoices
+        
+        for voiceId in localVoiceIds {
+            if !allVoices.contains(where: { $0.id == voiceId }) {
+                let displayName = voiceId.replacingOccurrences(of: "_", with: " ").capitalized
+                allVoices.append(Voice(id: voiceId, name: displayName))
+            }
+        }
+        return allVoices
+    }
+
     func downloadCSVFiles() async throws {
         let bgSession = BackgroundTaskSession.begin(name: "LocalTTS-DownloadCSV")
         defer { bgSession.end() }
