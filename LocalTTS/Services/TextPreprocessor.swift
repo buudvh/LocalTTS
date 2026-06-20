@@ -409,6 +409,7 @@ final class EnglishTransliterator {
         return g.joined(separator: "-")
     }
 }
+*/
 
 // MARK: - Vietnamese Number Speller
 final class VietnameseNumberSpeller {
@@ -492,7 +493,6 @@ final class VietnameseNumberSpeller {
         return e.map { String($0) }.map { S[Int($0) ?? 0] ?? String($0) }.joined(separator: " ")
     }
 }
-*/
 
 // MARK: - Text Preprocessor Service
 final class TextPreprocessor {
@@ -523,7 +523,7 @@ final class TextPreprocessor {
         defer { lock.unlock() }
         
         let fileManager = FileManager.default
-        var wordsLoaded = false
+        // var wordsLoaded = false
         var acronymsLoaded = false
         
         // 1. Try loading from Application Support directory
@@ -1269,6 +1269,7 @@ final class TextPreprocessor {
 
     // MARK: - Main Preprocess Pipeline
     func preprocess(_ text: String, enableTransliteration: Bool = false) -> String {
+        _ = enableTransliteration
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "" }
         
         let cleaned = Self.cleanEmojisAndSymbols(text)
