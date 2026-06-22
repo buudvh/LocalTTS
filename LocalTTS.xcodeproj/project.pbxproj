@@ -26,7 +26,6 @@
 		000000000000000000000116 /* ONNXPiperEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000216 /* ONNXPiperEngine.swift */; };
 		000000000000000000000117 /* TextPreprocessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000217 /* TextPreprocessor.swift */; };
 		000000000000000000000118 /* BackgroundTaskSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000218 /* BackgroundTaskSession.swift */; };
-		000000000000000000000119 /* non-vietnamese-words.csv in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000219 /* non-vietnamese-words.csv */; };
 		00000000000000000000011A /* acronyms.csv in Resources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000021A /* acronyms.csv */; };
 		00000000000000000000011B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000021B /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -52,7 +51,6 @@
 		000000000000000000000216 /* ONNXPiperEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ONNXPiperEngine.swift; sourceTree = "<group>"; };
 		000000000000000000000217 /* TextPreprocessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextPreprocessor.swift; sourceTree = "<group>"; };
 		000000000000000000000218 /* BackgroundTaskSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTaskSession.swift; sourceTree = "<group>"; };
-		000000000000000000000219 /* non-vietnamese-words.csv */ = {isa = PBXFileReference; lastKnownFileType = text; path = "non-vietnamese-words.csv"; sourceTree = "<group>"; };
 		00000000000000000000021A /* acronyms.csv */ = {isa = PBXFileReference; lastKnownFileType = text; path = acronyms.csv; sourceTree = "<group>"; };
 		00000000000000000000021B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		000000000000000000000301 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -86,6 +84,7 @@
 				000000000000000000000504 /* Models */,
 				000000000000000000000505 /* Services */,
 				000000000000000000000506 /* Support */,
+				000000000000000000000507 /* Resources */,
 				00000000000000000000021B /* Assets.xcassets */,
 				000000000000000000000301 /* Info.plist */,
 			);
@@ -133,10 +132,16 @@
 				000000000000000000000206 /* WAVEncoder.swift */,
 				00000000000000000000020F /* AppLogger.swift */,
 				000000000000000000000218 /* BackgroundTaskSession.swift */,
-				000000000000000000000219 /* non-vietnamese-words.csv */,
-				00000000000000000000021A /* acronyms.csv */,
 			);
 			path = Support;
+			sourceTree = "<group>";
+		};
+		000000000000000000000507 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				00000000000000000000021A /* acronyms.csv */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -206,7 +211,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				000000000000000000000119 /* non-vietnamese-words.csv in Resources */,
 				00000000000000000000011A /* acronyms.csv in Resources */,
 				00000000000000000000011B /* Assets.xcassets in Resources */,
 			);

@@ -40,13 +40,12 @@ final class NghiTTSClient {
 
     func fetchVietnameseVoices(forceRefresh: Bool) async throws -> [Voice] {
         let fm = FileManager.default
-        let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.csv")
         let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.csv")
-        if forceRefresh || !fm.fileExists(atPath: localWords.path) || !fm.fileExists(atPath: localAcronyms.path) {
+        if forceRefresh || !fm.fileExists(atPath: localAcronyms.path) {
             do {
                 try await downloadCSVFiles()
             } catch {
-                appLog("Warning: Failed to download CSV files: \(error.localizedDescription)")
+                appLog("Warning: Failed to copy CSV files: \(error.localizedDescription)")
             }
         }
 
@@ -85,39 +84,21 @@ final class NghiTTSClient {
     }
 
     func downloadCSVFiles() async throws {
-        let bgSession = BackgroundTaskSession.begin(name: "LocalTTS-DownloadCSV")
-        defer { bgSession.end() }
-        
-        let wordsURL = baseURL.appendingPathComponent("non-vietnamese-words.csv")
-        let acronymsURL = baseURL.appendingPathComponent("acronyms.csv")
-        
-        let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.csv")
+        // Comment out downloading of non-vietnamese-words.csv and remote acronyms.csv.
+        // Instead, copy acronyms.csv directly from the main Bundle to the modelStore directory.
         let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.csv")
-        
-        var requestWords = URLRequest(url: wordsURL)
-        requestWords.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
-        
-        let (tempWordsURL, responseWords) = try await session.download(for: requestWords)
-        try Self.validateHTTP(responseWords)
-        
-        var requestAcronyms = URLRequest(url: acronymsURL)
-        requestAcronyms.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
-        
-        let (tempAcronymsURL, responseAcronyms) = try await session.download(for: requestAcronyms)
-        try Self.validateHTTP(responseAcronyms)
-        
         let fm = FileManager.default
-        try fm.createDirectory(at: modelStore.rootURL, withIntermediateDirectories: true)
         
-        if fm.fileExists(atPath: localWords.path) {
-            try fm.removeItem(at: localWords)
+        guard let bundleURL = Bundle.main.url(forResource: "acronyms", withExtension: "csv") else {
+            throw NSError(domain: "NghiTTSClient", code: 404, userInfo: [NSLocalizedDescriptionKey: "acronyms.csv not found in app bundle"])
         }
-        try fm.moveItem(at: tempWordsURL, to: localWords)
+        
+        try fm.createDirectory(at: modelStore.rootURL, withIntermediateDirectories: true)
         
         if fm.fileExists(atPath: localAcronyms.path) {
             try fm.removeItem(at: localAcronyms)
         }
-        try fm.moveItem(at: tempAcronymsURL, to: localAcronyms)
+        try fm.copyItem(at: bundleURL, to: localAcronyms)
         
         TextPreprocessor.shared.loadResources()
     }
