@@ -415,7 +415,7 @@ final class JapaneseTransliterator {
         // Hiragana cơ bản
         "あ": "a", "い": "i", "う": "u", "え": "e", "お": "o",
         "か": "ka", "き": "ki", "く": "ku", "け": "ke", "こ": "ko",
-        "さ": "sa", "し": "shi", "す": "su", "se": "se", "そ": "so",
+        "さ": "sa", "し": "shi", "す": "su", "せ": "se", "そ": "so",
         "た": "ta", "ち": "chi", "つ": "tsu", "て": "te", "と": "to",
         "な": "na", "に": "ni", "ぬ": "nu", "ね": "ne", "の": "no",
         "は": "ha", "ひ": "hi", "ふ": "fu", "へ": "he", "ほ": "ho",
@@ -426,7 +426,7 @@ final class JapaneseTransliterator {
         
         "が": "ga", "ぎ": "gi", "ぐ": "gu", "げ": "ge", "ご": "go",
         "ざ": "za", "じ": "ji", "ず": "zu", "ぜ": "ze", "ぞ": "zo",
-        "だ": "da", "ぢ": "ji", "づ": "zu", "デ": "de", "ど": "do",
+        "だ": "da", "ぢ": "ji", "づ": "zu", "で": "de", "ど": "do",
         "ば": "ba", "び": "bi", "ぶ": "bu", "べ": "be", "ぼ": "bo",
         "ぱ": "pa", "ぴ": "pi", "ぷ": "pu", "ぺ": "pe", "ぽ": "po",
         
@@ -1307,7 +1307,8 @@ final actor TextPreprocessor {
     }
 
     private func replaceDictionaryWords(in text: String, type: DictionaryType) -> String {
-        appLog("📖 [ReplaceDictionary] Type: \(type), Input: '\(text)'")
+        let typeStr = type == .acronym ? "acronym" : "word"
+        appLog("📖 [ReplaceDictionary] Type: \(typeStr), Input: '\(text)'")
         // Tìm toàn bộ các token là từ (word tokens) trong văn bản
         let wordPattern = "[a-zA-Z0-9_\\u{00C0}-\\u{1EFF}]+"
         guard let regex = try? NSRegularExpression(pattern: wordPattern, options: []) else { return text }
@@ -1315,7 +1316,7 @@ final actor TextPreprocessor {
         let nsString = text as NSString
         let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsString.length))
         guard !matches.isEmpty else {
-            appLog("📖 [ReplaceDictionary] Type: \(type), No word matches found.")
+            appLog("📖 [ReplaceDictionary] Type: \(typeStr), No word matches found.")
             return text
         }
         
@@ -1378,7 +1379,7 @@ final actor TextPreprocessor {
             }
         }
         
-        appLog("📖 [ReplaceDictionary] Type: \(type), Output: '\(result)'")
+        appLog("📖 [ReplaceDictionary] Type: \(typeStr), Output: '\(result)'")
         return result
     }
 
