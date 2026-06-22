@@ -44,7 +44,7 @@ final class NghiTTSClient {
         let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.plist")
         if forceRefresh || !fm.fileExists(atPath: localAcronyms.path) || !fm.fileExists(atPath: localWords.path) {
             do {
-                try await downloadCSVFiles()
+                try await copyDictionaryPlistsFromBundle()
             } catch {
                 appLog("Warning: Failed to copy plist files: \(error.localizedDescription)")
             }
@@ -84,7 +84,7 @@ final class NghiTTSClient {
         return allVoices
     }
 
-    func downloadCSVFiles() async throws {
+    func copyDictionaryPlistsFromBundle() async throws {
         // Copy acronyms.plist and non-vietnamese-words.plist directly from main Bundle to the modelStore directory.
         let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.plist")
         let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.plist")

@@ -72,8 +72,8 @@ final class APIHandler {
 
             case ("POST", "/v1/dictionary/update"):
                 do {
-                    try await nghiClient.downloadCSVFiles()
-                    let responseText = "Dictionary files successfully updated."
+                    try await nghiClient.copyDictionaryPlistsFromBundle()
+                    let responseText = "Dictionary files successfully copied from app bundle."
                     return HTTPResponse(
                         statusCode: 200,
                         reason: "OK",
@@ -84,7 +84,7 @@ final class APIHandler {
                         body: Data(responseText.utf8)
                     )
                 } catch {
-                    throw APIError.upstream("Failed to update dictionary files: \(error.localizedDescription)")
+                    throw APIError.upstream("Failed to copy dictionary files from app bundle: \(error.localizedDescription)")
                 }
 
             case ("POST", "/v1/tts"):

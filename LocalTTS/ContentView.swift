@@ -86,14 +86,14 @@ struct ContentView: View {
                     }
 
                     /*
-                    Button("Cập nhật từ điển tiếng Anh") {
+                    Button("Cài đặt lại từ điển từ Bundle") {
                         Task {
-                            prefetchStatus = "Đang tải từ điển..."
+                            prefetchStatus = "Đang sao chép từ điển..."
                             do {
-                                try await appState.nghiClient.downloadCSVFiles()
-                                prefetchStatus = "Cập nhật từ điển thành công!"
+                                try await appState.nghiClient.copyDictionaryPlistsFromBundle()
+                                prefetchStatus = "Cài đặt lại từ điển thành công!"
                             } catch {
-                                prefetchStatus = "Lỗi tải từ điển: \(error.localizedDescription)"
+                                prefetchStatus = "Lỗi cài đặt từ điển: \(error.localizedDescription)"
                             }
                         }
                     }
