@@ -72,7 +72,6 @@ final class VietnameseWordChecker {
     }
 }
 
-/*
 // MARK: - English Transliterator
 final class EnglishTransliterator {
     static let sRules: [RegexRule] = [
@@ -409,7 +408,119 @@ final class EnglishTransliterator {
         return g.joined(separator: "-")
     }
 }
-*/
+
+// MARK: - Japanese Transliterator (Hiragana/Katakana to Romaji)
+final class JapaneseTransliterator {
+    private static let kanaToRomaji: [String: String] = [
+        // Hiragana cơ bản
+        "あ": "a", "い": "i", "う": "u", "え": "e", "お": "o",
+        "か": "ka", "き": "ki", "く": "ku", "け": "ke", "こ": "ko",
+        "さ": "sa", "し": "shi", "す": "su", "se": "se", "そ": "so",
+        "た": "ta", "ち": "chi", "つ": "tsu", "て": "te", "と": "to",
+        "な": "na", "に": "ni", "ぬ": "nu", "ね": "ne", "の": "no",
+        "は": "ha", "ひ": "hi", "ふ": "fu", "へ": "he", "ほ": "ho",
+        "ま": "ma", "み": "mi", "む": "mu", "め": "me", "も": "mo",
+        "や": "ya", "ゆ": "yu", "よ": "yo",
+        "ら": "ra", "り": "ri", "る": "ru", "れ": "re", "ろ": "ro",
+        "わ": "wa", "を": "o", "ん": "n",
+        
+        "が": "ga", "ぎ": "gi", "ぐ": "gu", "げ": "ge", "ご": "go",
+        "ざ": "za", "じ": "ji", "ず": "zu", "ぜ": "ze", "ぞ": "zo",
+        "だ": "da", "ぢ": "ji", "づ": "zu", "デ": "de", "ど": "do",
+        "ば": "ba", "び": "bi", "ぶ": "bu", "べ": "be", "ぼ": "bo",
+        "ぱ": "pa", "ぴ": "pi", "ぷ": "pu", "ぺ": "pe", "ぽ": "po",
+        
+        // Katakana cơ bản
+        "ア": "a", "イ": "i", "ウ": "u", "エ": "e", "オ": "o",
+        "カ": "ka", "キ": "ki", "ク": "ku", "ケ": "ke", "コ": "ko",
+        "サ": "sa", "シ": "shi", "ス": "su", "セ": "se", "ソ": "so",
+        "タ": "ta", "チ": "chi", "ツ": "tsu", "テ": "te", "ト": "to",
+        "ナ": "na", "ニ": "ni", "ヌ": "nu", "ネ": "ne", "ノ": "no",
+        "ハ": "ha", "ヒ": "hi", "フ": "fu", "ヘ": "he", "ホ": "ho",
+        "マ": "ma", "ミ": "mi", "ム": "mu", "メ": "me", "モ": "mo",
+        "ヤ": "ya", "ユ": "yu", "ヨ": "yo",
+        "ラ": "ra", "リ": "ri", "ル": "ru", "レ": "re", "ロ": "ro",
+        "ワ": "wa", "ヲ": "o", "ン": "n",
+        
+        "ガ": "ga", "ギ": "gi", "グ": "gu", "ゲ": "ge", "ゴ": "go",
+        "ザ": "za", "ジ": "ji", "ズ": "zu", "ゼ": "ze", "ゾ": "zo",
+        "ダ": "da", "ヂ": "ji", "ヅ": "zu", "デ": "de", "ド": "do",
+        "バ": "ba", "ビ": "bi", "ブ": "bu", "ベ": "be", "ボ": "bo",
+        "パ": "pa", "ピ": "pi", "プ": "pu", "ペ": "pe", "ポ": "po",
+        
+        // Âm ghép Hiragana (Yo-on)
+        "きゃ": "kya", "きゅ": "kyu", "きょ": "kyo",
+        "しゃ": "sha", "しゅ": "shu", "しょ": "sho",
+        "ちゃ": "cha", "ちゅ": "chu", "ちょ": "cho",
+        "にゃ": "nya", "にゅ": "nyu", "にょ": "nyo",
+        "ひゃ": "hya", "ひゅ": "hyu", "ひょ": "hyo",
+        "みゃ": "mya", "みゅ": "myu", "みょ": "myo",
+        "りゃ": "rya", "りゅ": "ryu", "りょ": "ryo",
+        "ぎゃ": "gya", "giゅ": "gyu", "ぎょ": "gyo",
+        "じゃ": "ja", "じゅ": "ju", "じょ": "jo",
+        "びゃ": "bya", "びゅ": "byu", "びょ": "byo",
+        "ぴゃ": "pya", "ぴゅ": "pyu", "ぴょ": "pyo",
+        
+        // Âm ghép Katakana (Yo-on)
+        "キャ": "kya", "キュ": "kyu", "キョ": "kyo",
+        "シャ": "sha", "シュ": "shu", "ショ": "sho",
+        "チャ": "cha", "チュ": "chu", "チョ": "cho",
+        "ニャ": "nya", "ニュ": "nyu", "ニョ": "nyo",
+        "ヒャ": "hya", "ヒュ": "hyu", "ヒョ": "hyo",
+        "ミャ": "mya", "ミュ": "myu", "ミョ": "myo",
+        "リャ": "rya", "リュ": "ryu", "リョ": "ryo",
+        "ギャ": "gya", "ギュ": "gyu", "ギョ": "gyo",
+        "ジャ": "ja", "ジュ": "ju", "ジョ": "jo",
+        "ビャ": "bya", "ビュ": "byu", "ビョ": "byo",
+        "ピャ": "pya", "ピュ": "pyu", "ピョ": "pyo",
+        
+        // Ký tự trường âm
+        "ー": ""
+    ]
+    
+    static func convertToRomaji(_ text: String) -> String {
+        let chars = Array(text)
+        var result = ""
+        var i = 0
+        
+        while i < chars.count {
+            // Kiểm tra âm ghép Yo-on (2 ký tự)
+            if i < chars.count - 1 {
+                let digraph = String(chars[i...i+1])
+                if let romaji = kanaToRomaji[digraph] {
+                    result += romaji
+                    i += 2
+                    continue
+                }
+            }
+            
+            let charStr = String(chars[i])
+            
+            // Kiểm tra âm ngắt Sokuon (っ/ッ)
+            if charStr == "っ" || charStr == "ッ" {
+                if i < chars.count - 1 {
+                    let nextCharStr = String(chars[i+1])
+                    if let nextRomaji = kanaToRomaji[nextCharStr], let firstLetter = nextRomaji.first {
+                        // Nhân đôi phụ âm đứng trước (trừ nguyên âm)
+                        if !"aeiou".contains(firstLetter) {
+                            result += String(firstLetter)
+                        }
+                    }
+                }
+                i += 1
+                continue
+            }
+            
+            if let romaji = kanaToRomaji[charStr] {
+                result += romaji
+            } else {
+                result += charStr
+            }
+            i += 1
+        }
+        return result
+    }
+}
 
 // MARK: - Vietnamese Number Speller
 final class VietnameseNumberSpeller {
@@ -495,22 +606,18 @@ final class VietnameseNumberSpeller {
 }
 
 // MARK: - Text Preprocessor Service
-final class TextPreprocessor {
+final actor TextPreprocessor {
     static let shared = TextPreprocessor()
     
     private var wordMap: [String: String] = [:]
     private var acronymMap: [String: String] = [:]
-    private let lock = NSLock()
+    private var transliterationCache: [String: String] = [:]
     
     func lookupAcronym(_ key: String) -> String? {
-        lock.lock()
-        defer { lock.unlock() }
         return acronymMap[key]
     }
     
     func lookupWord(_ key: String) -> String? {
-        lock.lock()
-        defer { lock.unlock() }
         return wordMap[key]
     }
     
@@ -519,73 +626,49 @@ final class TextPreprocessor {
     }
     
     func loadResources() {
-        lock.lock()
-        defer { lock.unlock() }
-        
         let fileManager = FileManager.default
-        // var wordsLoaded = false
+        var wordsLoaded = false
         var acronymsLoaded = false
         
         // 1. Try loading from Application Support directory
         if let appSupport = try? fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
             let rootURL = appSupport.appendingPathComponent("LocalTTS", isDirectory: true)
-            let acronymsURL = rootURL.appendingPathComponent("acronyms.csv")
+            let wordsURL = rootURL.appendingPathComponent("non-vietnamese-words.plist")
+            let acronymsURL = rootURL.appendingPathComponent("acronyms.plist")
             
-            // Comment out non-vietnamese words loading to avoid overhead
-            /*
-            let wordsURL = rootURL.appendingPathComponent("non-vietnamese-words.csv")
             if fileManager.fileExists(atPath: wordsURL.path) {
-                wordMap = Self.loadCSV(from: wordsURL)
+                wordMap = Self.loadPlist(from: wordsURL)
                 wordsLoaded = true
             }
-            */
             if fileManager.fileExists(atPath: acronymsURL.path) {
-                acronymMap = Self.loadCSV(from: acronymsURL)
+                acronymMap = Self.loadPlist(from: acronymsURL)
                 acronymsLoaded = true
             }
         }
         
         // 2. Fallback to Bundle resources if not loaded
-        // Comment out non-vietnamese words loading fallback
-        /*
         if !wordsLoaded {
-            if let bundleURL = Bundle.main.url(forResource: "non-vietnamese-words", withExtension: "csv") {
-                wordMap = Self.loadCSV(from: bundleURL)
+            if let bundleURL = Bundle.main.url(forResource: "non-vietnamese-words", withExtension: "plist") {
+                wordMap = Self.loadPlist(from: bundleURL)
             }
         }
-        */
         if !acronymsLoaded {
-            if let bundleURL = Bundle.main.url(forResource: "acronyms", withExtension: "csv") {
-                acronymMap = Self.loadCSV(from: bundleURL)
+            if let bundleURL = Bundle.main.url(forResource: "acronyms", withExtension: "plist") {
+                acronymMap = Self.loadPlist(from: bundleURL)
             }
         }
         
         appLog("Loaded \(wordMap.count) non-Vietnamese words and \(acronymMap.count) acronyms.")
     }
     
-    // MARK: - CSV Loading Helper
-    private static func loadCSV(from url: URL) -> [String: String] {
-        guard let content = try? String(contentsOf: url, encoding: .utf8) else {
-            appLog("Warning: Could not read CSV file at \(url.path)")
+    // MARK: - Plist Loading Helper
+    private static func loadPlist(from url: URL) -> [String: String] {
+        guard let data = try? Data(contentsOf: url),
+              let dict = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: String] else {
+            appLog("Warning: Could not read Plist file at \(url.path)")
             return [:]
         }
-        
-        var map = [String: String]()
-        let lines = content.components(separatedBy: .newlines)
-        for i in 1..<lines.count {
-            let line = lines[i].trimmingCharacters(in: .whitespacesAndNewlines)
-            if line.isEmpty { continue }
-            
-            if let commaIndex = line.firstIndex(of: ",") {
-                let key = String(line[..<commaIndex]).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                let value = String(line[line.index(after: commaIndex)...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !key.isEmpty && !value.isEmpty {
-                    map[key] = value
-                }
-            }
-        }
-        
-        return map
+        return dict
     }
     
     // MARK: - Regex Replacement Helper
@@ -643,7 +726,7 @@ final class TextPreprocessor {
         e = e.replacingOccurrences(of: "\\b_\\b", with: " ", options: .regularExpression)
         e = e.replacingOccurrences(of: "(?<!\\d)-(?!\\d)", with: " ", options: .regularExpression)
         
-        let keepPattern = "[^\\u{0000}-\\u{024F}\\u{1E00}-\\u{1EFF}]"
+        let keepPattern = "[^\\u{0000}-\\u{024F}\\u{1E00}-\\u{1EFF}\\u{3040}-\\u{30FF}]"
         e = e.replacingOccurrences(of: keepPattern, with: "", options: .regularExpression)
         
         return e.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1191,7 +1274,7 @@ final class TextPreprocessor {
         case word
     }
 
-    private static func replaceDictionaryWords(in text: String, type: DictionaryType) -> String {
+    private func replaceDictionaryWords(in text: String, type: DictionaryType) -> String {
         // Tìm toàn bộ các token là từ (word tokens) trong văn bản
         let wordPattern = "[a-zA-Z0-9_\\u{00C0}-\\u{1EFF}]+"
         guard let regex = try? NSRegularExpression(pattern: wordPattern, options: []) else { return text }
@@ -1228,10 +1311,8 @@ final class TextPreprocessor {
                 let phrase = rawPhrase.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
                                       .trimmingCharacters(in: .whitespacesAndNewlines)
                 
-                // Tra cứu trực tiếp từ lớp TextPreprocessor.shared mà không sao chép từ điển
-                let matchedValue = (type == .acronym) ? 
-                    TextPreprocessor.shared.lookupAcronym(phrase) : 
-                    TextPreprocessor.shared.lookupWord(phrase)
+                // Tra cứu trực tiếp từ bộ nhớ của actor
+                let matchedValue = (type == .acronym) ? acronymMap[phrase] : wordMap[phrase]
                     
                 if let match = matchedValue {
                     matchedLength = lookAhead
@@ -1269,22 +1350,23 @@ final class TextPreprocessor {
 
     // MARK: - Main Preprocess Pipeline
     func preprocess(_ text: String, enableTransliteration: Bool = false) -> String {
-        _ = enableTransliteration
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "" }
         
-        let cleaned = Self.cleanEmojisAndSymbols(text)
+        // 0. Chuyển đổi Hiragana/Katakana tiếng Nhật sang Romaji
+        let romajiText = JapaneseTransliterator.convertToRomaji(text)
+        
+        let cleaned = Self.cleanEmojisAndSymbols(romajiText)
         let processedVi = Self.processVietnameseText(cleaned)
         
         let lowercased = processedVi.lowercased()
         
         // 1. Thay thế từ viết tắt (Acronyms) luôn luôn chạy
-        let replacedText = Self.replaceDictionaryWords(in: lowercased, type: .acronym)
+        var replacedText = replaceDictionaryWords(in: lowercased, type: .acronym)
         
-        /* COMMENT OUT ALL ENGLISH PROCESSING CODE
         // 2. Nếu bật dịch phiên âm tiếng Anh, tiến hành khớp từ điển tiếng Anh và chạy bộ quy tắc
         if enableTransliteration {
             // Thay thế các từ từ từ điển tiếng Anh (non-vietnamese-words)
-            replacedText = Self.replaceDictionaryWords(in: replacedText, type: .word)
+            replacedText = replaceDictionaryWords(in: replacedText, type: .word)
             
             let nsString = replacedText as NSString
             let matches = Self.tokenRegex.matches(in: replacedText, options: [], range: NSRange(location: 0, length: nsString.length))
@@ -1302,34 +1384,50 @@ final class TextPreprocessor {
                 
                 let processedToken: String
                 if token.count > 1 && token != "mc" && !VietnameseWordChecker.isVietnameseWord(token) {
-                    if token.contains("-") || token.contains(".") {
-                        var partsResult = ""
-                        var currentPart = ""
-                        for char in token {
-                            if char == "-" || char == "." {
+                    // Check cache first
+                    if let cached = transliterationCache[token] {
+                        processedToken = cached
+                    } else {
+                        // Tự động chuẩn hóa dấu phụ (ví dụ: ryū -> ryu, arigatō -> arigato)
+                        let folded = token.folding(options: .diacriticInsensitive, locale: nil)
+                        
+                        let transliterated: String
+                        if let dictMatch = lookupWord(folded) {
+                            transliterated = dictMatch
+                        } else {
+                            if folded.contains("-") || folded.contains(".") {
+                                var partsResult = ""
+                                var currentPart = ""
+                                for char in folded {
+                                    if char == "-" || char == "." {
+                                        if !currentPart.isEmpty {
+                                            if !VietnameseWordChecker.isVietnameseWord(currentPart) {
+                                                partsResult += EnglishTransliterator.transliterateWord(currentPart)
+                                            } else {
+                                                partsResult += currentPart
+                                            }
+                                            currentPart = ""
+                                        }
+                                        partsResult.append(char)
+                                    } else {
+                                        currentPart.append(char)
+                                    }
+                                }
                                 if !currentPart.isEmpty {
                                     if !VietnameseWordChecker.isVietnameseWord(currentPart) {
                                         partsResult += EnglishTransliterator.transliterateWord(currentPart)
                                     } else {
                                         partsResult += currentPart
                                     }
-                                    currentPart = ""
                                 }
-                                partsResult.append(char)
+                                transliterated = partsResult
                             } else {
-                                currentPart.append(char)
+                                transliterated = EnglishTransliterator.transliterateWord(folded)
                             }
                         }
-                        if !currentPart.isEmpty {
-                            if !VietnameseWordChecker.isVietnameseWord(currentPart) {
-                                partsResult += EnglishTransliterator.transliterateWord(currentPart)
-                            } else {
-                                partsResult += currentPart
-                            }
-                        }
-                        processedToken = partsResult
-                    } else {
-                        processedToken = EnglishTransliterator.transliterateWord(token)
+                        // Cache the result
+                        transliterationCache[token] = transliterated
+                        processedToken = transliterated
                     }
                 } else {
                     processedToken = token
@@ -1346,7 +1444,6 @@ final class TextPreprocessor {
             
             return result
         }
-        */
         
         return replacedText
     }

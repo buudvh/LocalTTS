@@ -40,12 +40,12 @@ final class NghiTTSClient {
 
     func fetchVietnameseVoices(forceRefresh: Bool) async throws -> [Voice] {
         let fm = FileManager.default
-        let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.csv")
+        let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.plist")
         if forceRefresh || !fm.fileExists(atPath: localAcronyms.path) {
             do {
                 try await downloadCSVFiles()
             } catch {
-                appLog("Warning: Failed to copy CSV files: \(error.localizedDescription)")
+                appLog("Warning: Failed to copy plist files: \(error.localizedDescription)")
             }
         }
 
@@ -84,13 +84,12 @@ final class NghiTTSClient {
     }
 
     func downloadCSVFiles() async throws {
-        // Comment out downloading of non-vietnamese-words.csv and remote acronyms.csv.
-        // Instead, copy acronyms.csv directly from the main Bundle to the modelStore directory.
-        let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.csv")
+        // Instead, copy acronyms.plist directly from the main Bundle to the modelStore directory.
+        let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.plist")
         let fm = FileManager.default
         
-        guard let bundleURL = Bundle.main.url(forResource: "acronyms", withExtension: "csv") else {
-            throw NSError(domain: "NghiTTSClient", code: 404, userInfo: [NSLocalizedDescriptionKey: "acronyms.csv not found in app bundle"])
+        guard let bundleURL = Bundle.main.url(forResource: "acronyms", withExtension: "plist") else {
+            throw NSError(domain: "NghiTTSClient", code: 404, userInfo: [NSLocalizedDescriptionKey: "acronyms.plist not found in app bundle"])
         }
         
         try fm.createDirectory(at: modelStore.rootURL, withIntermediateDirectories: true)
@@ -100,7 +99,7 @@ final class NghiTTSClient {
         }
         try fm.copyItem(at: bundleURL, to: localAcronyms)
         
-        TextPreprocessor.shared.loadResources()
+        await TextPreprocessor.shared.loadResources()
     }
 
     func prefetchModels(voices: [String]) async throws -> [PrefetchResult] {

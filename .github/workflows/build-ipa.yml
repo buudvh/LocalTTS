@@ -82,6 +82,48 @@ jobs:
             echo "Copying compiled espeak-ng database files recursively to $DEST_DATA_PATH"
             cp -R "$BREW_DATA_PATH"/* "$DEST_DATA_PATH"/
             
+            # Clean up unnecessary language dictionaries to reduce IPA size
+            echo "Cleaning up unnecessary dictionaries..."
+            for f in "$DEST_DATA_PATH"/*_dict; do
+              [ -e "$f" ] || continue
+              filename=$(basename "$f")
+              if [ "$filename" != "vi_dict" ] && [ "$filename" != "en_dict" ]; then
+                rm -f "$f"
+              fi
+            done
+            
+            # Clean up unnecessary voice configurations
+            VOICES_DIR="$DEST_DATA_PATH/voices"
+            if [ -d "$VOICES_DIR" ]; then
+              echo "Cleaning up unnecessary voices..."
+              for d in "$VOICES_DIR"/*; do
+                [ -e "$d" ] || continue
+                name=$(basename "$d")
+                if [ -d "$d" ]; then
+                  if [ "$name" != "!v" ] && [ "$name" != "en" ] && [ "$name" != "asia" ]; then
+                    rm -rf "$d"
+                  fi
+                else
+                  case "$name" in
+                    active|default|en*|vi*) ;;
+                    *) rm -f "$d" ;;
+                  esac
+                fi
+              done
+              
+              # Keep only Vietnamese voices inside voices/asia
+              if [ -d "$VOICES_DIR/asia" ]; then
+                for f in "$VOICES_DIR/asia"/*; do
+                  [ -e "$f" ] || continue
+                  name=$(basename "$f")
+                  case "$name" in
+                    vi*) ;;
+                    *) rm -rf "$f" ;;
+                  esac
+                done
+              fi
+            fi
+            
             # Verify core espeak database files
             echo "Verifying core espeak-ng database files..."
             test -f "$DEST_DATA_PATH/phondata"
@@ -229,6 +271,48 @@ jobs:
           if [ -d "$DEST_DATA_PATH" ]; then
             echo "Copying compiled espeak-ng database files recursively to Archive: $DEST_DATA_PATH"
             cp -R "$BREW_DATA_PATH"/* "$DEST_DATA_PATH"/
+            
+            # Clean up unnecessary language dictionaries to reduce Archive size
+            echo "Cleaning up unnecessary dictionaries in Archive..."
+            for f in "$DEST_DATA_PATH"/*_dict; do
+              [ -e "$f" ] || continue
+              filename=$(basename "$f")
+              if [ "$filename" != "vi_dict" ] && [ "$filename" != "en_dict" ]; then
+                rm -f "$f"
+              fi
+            done
+            
+            # Clean up unnecessary voice configurations
+            VOICES_DIR="$DEST_DATA_PATH/voices"
+            if [ -d "$VOICES_DIR" ]; then
+              echo "Cleaning up unnecessary voices in Archive..."
+              for d in "$VOICES_DIR"/*; do
+                [ -e "$d" ] || continue
+                name=$(basename "$d")
+                if [ -d "$d" ]; then
+                  if [ "$name" != "!v" ] && [ "$name" != "en" ] && [ "$name" != "asia" ]; then
+                    rm -rf "$d"
+                  fi
+                else
+                  case "$name" in
+                    active|default|en*|vi*) ;;
+                    *) rm -f "$d" ;;
+                  esac
+                fi
+              done
+              
+              # Keep only Vietnamese voices inside voices/asia
+              if [ -d "$VOICES_DIR/asia" ]; then
+                for f in "$VOICES_DIR/asia"/*; do
+                  [ -e "$f" ] || continue
+                  name=$(basename "$f")
+                  case "$name" in
+                    vi*) ;;
+                    *) rm -rf "$f" ;;
+                  esac
+                done
+              fi
+            fi
             
             # Verify core espeak database files in Archive
             echo "Verifying core espeak-ng database files in Archive..."

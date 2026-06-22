@@ -31,7 +31,7 @@ final class PiperTTSService {
 
         currentModel = voice
         
-        let preprocessedText = TextPreprocessor.shared.preprocess(text, enableTransliteration: enableTransliteration)
+        let preprocessedText = await TextPreprocessor.shared.preprocess(text, enableTransliteration: enableTransliteration)
         
         return try await engine.synthesize(
             text: preprocessedText,
