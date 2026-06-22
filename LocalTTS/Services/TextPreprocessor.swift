@@ -1242,30 +1242,62 @@ final actor TextPreprocessor {
     
     private static func processVietnameseText(_ text: String, unlimitedRoman: Bool = false) -> String {
         let original = text
+        appLog("📝 [Vietnamese Normalizer] Starting preprocess for text: '\(text)'")
         var e = text
+        
+        appLog("   - Running precomposedStringWithCanonicalMapping")
         e = text.precomposedStringWithCanonicalMapping
+        
+        appLog("   - Running cleanText")
         e = cleanText(e)
+        
+        appLog("   - Running normalizeQuotesAndDashes")
         e = normalizeQuotesAndDashes(e)
+        
+        appLog("   - Running formatNumbers")
         e = formatNumbers(e)
+        
+        appLog("   - Running processUnitsRangeAndRatio")
         e = processUnitsRangeAndRatio(e)
+        
+        appLog("   - Running processYearRanges")
         e = processYearRanges(e)
+        
+        appLog("   - Running processDates")
         e = processDates(e)
+        
+        appLog("   - Running processTime")
         e = processTime(e)
+        
+        appLog("   - Running processRomanNumerals")
         e = processRomanNumerals(e, unlimited: unlimitedRoman)
+        
+        appLog("   - Running processOrdinals")
         e = processOrdinals(e)
+        
+        appLog("   - Running processCurrency")
         e = processCurrency(e)
+        
+        appLog("   - Running processPercentages")
         e = processPercentages(e)
+        
+        appLog("   - Running processPhoneNumbers")
         e = processPhoneNumbers(e)
+        
+        appLog("   - Running processDecimals")
         e = processDecimals(e)
+        
+        appLog("   - Running processUnits")
         e = processUnits(e)
+        
+        appLog("   - Running processDigits")
         e = processDigits(e)
         
+        appLog("   - Trimming and cleaning white spaces")
         e = e.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         e = e.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        if e != original {
-            appLog("📝 [Vietnamese Normalizer] input: '\(original)' -> output: '\(e)'")
-        }
+        appLog("📝 [Vietnamese Normalizer] Finished. Output: '\(e)'")
         return e
     }
 
@@ -1275,13 +1307,17 @@ final actor TextPreprocessor {
     }
 
     private func replaceDictionaryWords(in text: String, type: DictionaryType) -> String {
+        appLog("📖 [ReplaceDictionary] Type: \(type), Input: '\(text)'")
         // Tìm toàn bộ các token là từ (word tokens) trong văn bản
         let wordPattern = "[a-zA-Z0-9_\\u{00C0}-\\u{1EFF}]+"
         guard let regex = try? NSRegularExpression(pattern: wordPattern, options: []) else { return text }
         
         let nsString = text as NSString
         let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsString.length))
-        guard !matches.isEmpty else { return text }
+        guard !matches.isEmpty else {
+            appLog("📖 [ReplaceDictionary] Type: \(type), No word matches found.")
+            return text
+        }
         
         struct WordToken {
             let text: String
@@ -1332,6 +1368,8 @@ final actor TextPreprocessor {
                 let nsResult = result as NSString
                 result = nsResult.replacingCharacters(in: originalRange, with: match)
                 
+                appLog("   - Replaced phrase '\(nsString.substring(with: NSRange(location: startLoc, length: endLoc - startLoc)))' with '\(match)'")
+                
                 // Cập nhật lại offset chênh lệch độ dài
                 offset += (match.count - (endLoc - startLoc))
                 i += matchedLength
@@ -1340,6 +1378,7 @@ final actor TextPreprocessor {
             }
         }
         
+        appLog("📖 [ReplaceDictionary] Type: \(type), Output: '\(result)'")
         return result
     }
 
@@ -1350,22 +1389,31 @@ final actor TextPreprocessor {
 
     // MARK: - Main Preprocess Pipeline
     func preprocess(_ text: String, enableTransliteration: Bool = false) -> String {
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "" }
+        appLog("🚀 [Preprocess] Start preprocessing for: '\(text)' (transliteration: \(enableTransliteration))")
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            appLog("🚀 [Preprocess] Text is empty, returning empty string.")
+            return ""
+        }
         
         // 0. Chuyển đổi Hiragana/Katakana tiếng Nhật sang Romaji
+        appLog("🚀 [Preprocess] Step 0a: Converting Japanese characters (Romaji)...")
         let romajiText = JapaneseTransliterator.convertToRomaji(text)
         
+        appLog("🚀 [Preprocess] Step 0b: Cleaning emojis and symbols...")
         let cleaned = Self.cleanEmojisAndSymbols(romajiText)
+        
+        appLog("🚀 [Preprocess] Step 0c: Running Vietnamese text processor...")
         let processedVi = Self.processVietnameseText(cleaned)
         
         let lowercased = processedVi.lowercased()
         
         // 1. Thay thế từ viết tắt (Acronyms) luôn luôn chạy
+        appLog("🚀 [Preprocess] Step 1: Replacing acronyms...")
         var replacedText = replaceDictionaryWords(in: lowercased, type: .acronym)
         
         // 2. Nếu bật dịch phiên âm tiếng Anh, tiến hành khớp từ điển tiếng Anh và chạy bộ quy tắc
         if enableTransliteration {
-            // Thay thế các từ từ từ điển tiếng Anh (non-vietnamese-words)
+            appLog("🚀 [Preprocess] Step 2: Translating English words (transliteration is enabled)...")
             replacedText = replaceDictionaryWords(in: replacedText, type: .word)
             
             let nsString = replacedText as NSString
@@ -1374,6 +1422,7 @@ final actor TextPreprocessor {
             var result = ""
             var lastOffset = 0
             
+            appLog("🚀 [Preprocess] Step 2b: Processing individual non-Vietnamese tokens...")
             for match in matches {
                 if match.range.location > lastOffset {
                     let gapRange = NSRange(location: lastOffset, length: match.range.location - lastOffset)
@@ -1442,9 +1491,11 @@ final actor TextPreprocessor {
                 result += nsString.substring(with: gapRange)
             }
             
+            appLog("🚀 [Preprocess] Finish preprocessing (with transliteration). Output: '\(result)'")
             return result
         }
         
+        appLog("🚀 [Preprocess] Finish preprocessing. Output: '\(replacedText)'")
         return replacedText
     }
 }
