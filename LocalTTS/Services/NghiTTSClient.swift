@@ -41,7 +41,8 @@ final class NghiTTSClient {
     func fetchVietnameseVoices(forceRefresh: Bool) async throws -> [Voice] {
         let fm = FileManager.default
         let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.plist")
-        if forceRefresh || !fm.fileExists(atPath: localAcronyms.path) {
+        let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.plist")
+        if forceRefresh || !fm.fileExists(atPath: localAcronyms.path) || !fm.fileExists(atPath: localWords.path) {
             do {
                 try await downloadCSVFiles()
             } catch {
@@ -84,12 +85,17 @@ final class NghiTTSClient {
     }
 
     func downloadCSVFiles() async throws {
-        // Instead, copy acronyms.plist directly from the main Bundle to the modelStore directory.
+        // Copy acronyms.plist and non-vietnamese-words.plist directly from main Bundle to the modelStore directory.
         let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.plist")
+        let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.plist")
         let fm = FileManager.default
         
-        guard let bundleURL = Bundle.main.url(forResource: "acronyms", withExtension: "plist") else {
+        guard let bundleAcronymsURL = Bundle.main.url(forResource: "acronyms", withExtension: "plist") else {
             throw NSError(domain: "NghiTTSClient", code: 404, userInfo: [NSLocalizedDescriptionKey: "acronyms.plist not found in app bundle"])
+        }
+        
+        guard let bundleWordsURL = Bundle.main.url(forResource: "non-vietnamese-words", withExtension: "plist") else {
+            throw NSError(domain: "NghiTTSClient", code: 404, userInfo: [NSLocalizedDescriptionKey: "non-vietnamese-words.plist not found in app bundle"])
         }
         
         try fm.createDirectory(at: modelStore.rootURL, withIntermediateDirectories: true)
@@ -97,7 +103,12 @@ final class NghiTTSClient {
         if fm.fileExists(atPath: localAcronyms.path) {
             try fm.removeItem(at: localAcronyms)
         }
-        try fm.copyItem(at: bundleURL, to: localAcronyms)
+        try fm.copyItem(at: bundleAcronymsURL, to: localAcronyms)
+        
+        if fm.fileExists(atPath: localWords.path) {
+            try fm.removeItem(at: localWords)
+        }
+        try fm.copyItem(at: bundleWordsURL, to: localWords)
         
         await TextPreprocessor.shared.loadResources()
     }
