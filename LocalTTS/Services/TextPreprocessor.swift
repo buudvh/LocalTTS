@@ -456,7 +456,7 @@ final class JapaneseTransliterator {
         "ひゃ": "hya", "ひゅ": "hyu", "ひょ": "hyo",
         "みゃ": "mya", "みゅ": "myu", "みょ": "myo",
         "りゃ": "rya", "りゅ": "ryu", "りょ": "ryo",
-        "ぎゃ": "gya", "giゅ": "gyu", "ぎょ": "gyo",
+        "ぎゃ": "gya", "ぎゅ": "gyu", "ぎょ": "gyo",
         "じゃ": "ja", "じゅ": "ju", "じょ": "jo",
         "びゃ": "bya", "びゅ": "byu", "びょ": "byo",
         "ぴゃ": "pya", "ぴゅ": "pyu", "ぴょ": "pyo",
