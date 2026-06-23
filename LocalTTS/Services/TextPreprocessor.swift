@@ -1661,13 +1661,15 @@ final actor TextPreprocessor {
         
         let words = matches.map { WordToken(text: nsString.substring(with: $0.range).lowercased(), range: $0.range) }
         
-        var result = text
-        var offset = 0
+        var result = ""
+        var lastCopiedIndex = 0
         var i = 0
         
         while i < words.count {
             var matchedLength = 0
             var replacement: String? = nil
+            var matchStartLoc = 0
+            var matchEndLoc = 0
             
             // Tìm kiếm tham lam (greedy matching): thử khớp cụm từ tối đa 4 từ giảm dần về 1 từ
             for lookAhead in (1...4).reversed() {
@@ -1688,30 +1690,33 @@ final actor TextPreprocessor {
                 if let match = matchedValue {
                     matchedLength = lookAhead
                     replacement = match
+                    matchStartLoc = startLoc
+                    matchEndLoc = endLoc
                     break
                 }
             }
             
             if let match = replacement, matchedLength > 0 {
-                // Xác định vùng cần thay thế trong văn bản hiện tại
-                let startLoc = words[i].range.location
-                let lastWord = words[i + matchedLength - 1]
-                let endLoc = lastWord.range.location + lastWord.range.length
+                // Sao chép đoạn văn bản không thay đổi từ lastCopiedIndex đến matchStartLoc
+                if matchStartLoc > lastCopiedIndex {
+                    result += nsString.substring(with: NSRange(location: lastCopiedIndex, length: matchStartLoc - lastCopiedIndex))
+                }
                 
                 let replacementText = (type == .word) ? "\u{FEFF}\(match)\u{FEFF}" : match
-                let originalRange = NSRange(location: startLoc + offset, length: endLoc - startLoc)
+                result += replacementText
                 
-                let nsResult = result as NSString
-                result = nsResult.replacingCharacters(in: originalRange, with: replacementText)
+                appLog("   - Replaced phrase '\(nsString.substring(with: NSRange(location: matchStartLoc, length: matchEndLoc - matchStartLoc)))' with '\(replacementText)'")
                 
-                appLog("   - Replaced phrase '\(nsString.substring(with: NSRange(location: startLoc, length: endLoc - startLoc)))' with '\(replacementText)'")
-                
-                // Cập nhật lại offset chênh lệch độ dài
-                offset += (replacementText.utf16.count - (endLoc - startLoc))
+                lastCopiedIndex = matchEndLoc
                 i += matchedLength
             } else {
                 i += 1
             }
+        }
+        
+        // Sao chép đoạn văn bản còn lại từ lastCopiedIndex đến cuối
+        if lastCopiedIndex < nsString.length {
+            result += nsString.substring(with: NSRange(location: lastCopiedIndex, length: nsString.length - lastCopiedIndex))
         }
         
         appLog("📖 [ReplaceDictionary] Type: \(typeStr), Output: '\(result)'")
