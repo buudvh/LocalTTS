@@ -3,4 +3,4 @@ description: Initialize and build the CodeGraph semantic database for the projec
 ---
 
 1. Initialize CodeGraph
-npx @colbymchenry/codegraph init
+cmd /c "codegraph init"
