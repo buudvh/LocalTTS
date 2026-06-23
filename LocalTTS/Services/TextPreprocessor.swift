@@ -74,6 +74,8 @@ final class VietnameseWordChecker {
 
 // MARK: - English Transliterator
 final class EnglishTransliterator {
+    static let vowels = "aeiouyăâêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
+    
     static let sRules: [RegexRule] = [
         RegexRule(pattern: "tion$", options: .caseInsensitive, template: "ân"),
         RegexRule(pattern: "sion$", options: .caseInsensitive, template: "ân"),
@@ -290,7 +292,7 @@ final class EnglishTransliterator {
     ]
     
     static let tRules: [RegexRule] = {
-        let v = "aeiouyăâêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
+        let v = vowels
         return [
             RegexRule(pattern: "x(?![v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "c"),
             RegexRule(pattern: "j", options: .caseInsensitive, template: "d"),
@@ -321,7 +323,8 @@ final class EnglishTransliterator {
     
     static func transliterateWord(_ word: String) -> String {
         guard !word.isEmpty else { return "" }
-        var n = word.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let vowels = Self.vowels
+        var n = word.lowercased().trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         if n.hasPrefix("y") {
             n = "d" + n.dropFirst()
         }
@@ -353,7 +356,7 @@ final class EnglishTransliterator {
         }
         
         var g = a.map { part -> String in
-            var l = part.trimmingCharacters(in: .whitespacesAndNewlines)
+            var l = part.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
             if l.isEmpty { return "" }
             if l.hasPrefix("y") {
                 l = "d" + l.dropFirst()
@@ -373,7 +376,7 @@ final class EnglishTransliterator {
         }
         
         g = g.map { part -> String in
-            var i = part.trimmingCharacters(in: .whitespacesAndNewlines)
+            var i = part.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
             if i.isEmpty { return "" }
             
             let lConsonants = "bcdfghjklmnpqrstvwxz"
@@ -567,7 +570,7 @@ final class VietnameseNumberSpeller {
         
         guard let n = Int(e) else {
             // If too large to parse as Int, map it digit by digit
-            return e.map { String($0) }.map { S[Int($0) ?? 0] ?? String($0) }.joined(separator: " ")
+            return e.map { String($0) }.map { S[Int($0) ?? 0] }.joined(separator: " ")
         }
         
         if n == 0 { return "không" }
@@ -625,7 +628,7 @@ final class VietnameseNumberSpeller {
             return prefix + " " + spell(String(r))
         }
         
-        return e.map { String($0) }.map { S[Int($0) ?? 0] ?? String($0) }.joined(separator: " ")
+        return e.map { String($0) }.map { S[Int($0) ?? 0] }.joined(separator: " ")
     }
 }
 
@@ -646,11 +649,21 @@ final actor TextPreprocessor {
     }
     
     private init() {
-        loadResources()
+        let loaded = Self.loadResourcesFromDisk()
+        self.wordMap = loaded.wordMap
+        self.acronymMap = loaded.acronymMap
     }
     
     func loadResources() {
+        let loaded = Self.loadResourcesFromDisk()
+        self.wordMap = loaded.wordMap
+        self.acronymMap = loaded.acronymMap
+    }
+    
+    private static func loadResourcesFromDisk() -> (wordMap: [String: String], acronymMap: [String: String]) {
         let fileManager = FileManager.default
+        var wordMap: [String: String] = [:]
+        var acronymMap: [String: String] = [:]
         var wordsLoaded = false
         var acronymsLoaded = false
         
@@ -683,6 +696,7 @@ final actor TextPreprocessor {
         }
         
         appLog("Loaded \(wordMap.count) non-Vietnamese words and \(acronymMap.count) acronyms.")
+        return (wordMap, acronymMap)
     }
     
     // MARK: - Plist Loading Helper
@@ -1265,7 +1279,6 @@ final actor TextPreprocessor {
     }
     
     private static func processVietnameseText(_ text: String, unlimitedRoman: Bool = false) -> String {
-        let original = text
         appLog("📝 [Vietnamese Normalizer] Starting preprocess for text: '\(text)'")
         var e = text
         
