@@ -13,7 +13,6 @@ struct ContentView: View {
     @State private var testSpeed = 1.0
     @State private var isSynthesizing = false
     @State private var testAudioPlayer: AVAudioPlayer? = nil
-    @State private var enableTransliteration = true
     @State private var isDownloadingAll = false
     @State private var downloadProgress = ""
     @State private var isShowingFileImporter = false
@@ -155,7 +154,7 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Toggle("Dịch phiên âm từ nước ngoài (Anh/Nhật)", isOn: $enableTransliteration)
+
                     
                     Button(isSynthesizing ? "Synthesizing..." : "Speak") {
                         Task { await testTTS() }
@@ -340,8 +339,7 @@ struct ContentView: View {
             let audioData = try await appState.ttsService.synthesize(
                 text: testText,
                 voice: selectedVoice.name,
-                speed: testSpeed,
-                enableTransliteration: enableTransliteration
+                speed: testSpeed
             )
             
             appLog("Synthesis complete, audio data size: \(audioData.count) bytes. Playing...")

@@ -879,7 +879,6 @@ final class VietnameseNumberSpeller {
             let prefix = C[s] ?? ""
             if r == 0 { return prefix }
             if r == 1 { return prefix + " mốt" }
-            if r == 4 { return prefix + " tư" }
             if r == 5 { return prefix + " lăm" }
             return prefix + " " + S[r]
         }
@@ -1384,18 +1383,7 @@ final actor TextPreprocessor {
         }
     }
 
-    private static func processOrdinals(_ text: String) -> String {
-        let ordinalMap = [
-            "1": "nhất", "2": "hai", "3": "ba", "4": "tư", "5": "năm",
-            "6": "sáu", "7": "bảy", "8": "tám", "9": "chín", "10": "mười"
-        ]
-        return replaceMatches(in: text, pattern: "(thứ|lần|bước|phần|chương|tập|số)\\s*(\\d+)", options: [.caseInsensitive]) { match, ns in
-            let r = ns.substring(with: match.range(at: 1))
-            let t = ns.substring(with: match.range(at: 2))
-            let spelled = ordinalMap[t] ?? VietnameseNumberSpeller.spell(t)
-            return "\(r) \(spelled)"
-        }
-    }
+
 
     private static func processCurrency(_ text: String) -> String {
         var e = text
@@ -1606,8 +1594,7 @@ final actor TextPreprocessor {
         appLog("   - Running processRomanNumerals")
         e = processRomanNumerals(e, unlimited: unlimitedRoman)
         
-        appLog("   - Running processOrdinals")
-        e = processOrdinals(e)
+
         
         appLog("   - Running processCurrency")
         e = processCurrency(e)
@@ -1729,8 +1716,8 @@ final actor TextPreprocessor {
     )
 
     // MARK: - Main Preprocess Pipeline
-    func preprocess(_ text: String, enableTransliteration: Bool = true) -> String {
-        appLog("🚀 [Preprocess] Start preprocessing for: '\(text)' (transliteration: \(enableTransliteration))")
+    func preprocess(_ text: String) -> String {
+        appLog("🚀 [Preprocess] Start preprocessing for: '\(text)'")
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             appLog("🚀 [Preprocess] Text is empty, returning empty string.")
             return ""
@@ -1752,115 +1739,109 @@ final actor TextPreprocessor {
         appLog("🚀 [Preprocess] Step 1: Replacing acronyms...")
         var replacedText = replaceDictionaryWords(in: lowercased, type: .acronym)
         
-        // 2. Nếu bật dịch phiên âm tiếng Anh, tiến hành khớp từ điển tiếng Anh và chạy bộ quy tắc
-        if enableTransliteration {
-            appLog("🚀 [Preprocess] Step 2: Translating English words (transliteration is enabled)...")
-            replacedText = replaceDictionaryWords(in: replacedText, type: .word)
-            
-            let nsString = replacedText as NSString
-            let matches = Self.tokenRegex.matches(in: replacedText, options: [], range: NSRange(location: 0, length: nsString.length))
-            
-            var result = ""
-            var lastOffset = 0
-            
-            appLog("🚀 [Preprocess] Step 2b: Processing individual non-Vietnamese tokens...")
-            for match in matches {
-                if match.range.location > lastOffset {
-                    let gapRange = NSRange(location: lastOffset, length: match.range.location - lastOffset)
-                    result += nsString.substring(with: gapRange)
-                }
-                
-                let token = nsString.substring(with: match.range)
-                
-                // Kiểm tra xem token này có phải đã được xử lý bởi từ điển (Sentinel check) hay không
-                var isTranslatedByDict = false
-                if match.range.location > 0 {
-                    let prevCharRange = NSRange(location: match.range.location - 1, length: 1)
-                    if nsString.substring(with: prevCharRange) == "\u{FEFF}" {
-                        isTranslatedByDict = true
-                    }
-                }
-                
-                let processedToken: String
-                if isTranslatedByDict {
-                    processedToken = token
-                } else if token.count > 1 && token != "mc" && !VietnameseWordChecker.isVietnameseWord(token) {
-                    // Check cache first
-                    if let cached = transliterationCache[token] {
-                        processedToken = cached
-                    } else {
-                        // Tự động chuẩn hóa dấu phụ (ví dụ: ryū -> ryu, arigatō -> arigato)
-                        let folded = token.folding(options: .diacriticInsensitive, locale: nil)
-                        
-                        let transliterated: String
-                        if let dictMatch = lookupWord(folded) {
-                            transliterated = dictMatch
-                        } else if JapaneseTransliterator.isJapaneseRomaji(folded) {
-                            transliterated = JapaneseTransliterator.transliterateRomaji(folded)
-                        } else {
-                            if folded.contains("-") || folded.contains(".") {
-                                var partsResult = ""
-                                var currentPart = ""
-                                for char in folded {
-                                    if char == "-" || char == "." {
-                                        if !currentPart.isEmpty {
-                                            if !VietnameseWordChecker.isVietnameseWord(currentPart) {
-                                                if JapaneseTransliterator.isJapaneseRomaji(currentPart) {
-                                                    partsResult += JapaneseTransliterator.transliterateRomaji(currentPart)
-                                                } else {
-                                                    partsResult += EnglishTransliterator.transliterateWord(currentPart)
-                                                }
-                                            } else {
-                                                partsResult += currentPart
-                                            }
-                                            currentPart = ""
-                                        }
-                                        partsResult.append(char)
-                                    } else {
-                                        currentPart.append(char)
-                                    }
-                                }
-                                if !currentPart.isEmpty {
-                                    if !VietnameseWordChecker.isVietnameseWord(currentPart) {
-                                        if JapaneseTransliterator.isJapaneseRomaji(currentPart) {
-                                            partsResult += JapaneseTransliterator.transliterateRomaji(currentPart)
-                                        } else {
-                                            partsResult += EnglishTransliterator.transliterateWord(currentPart)
-                                        }
-                                    } else {
-                                        partsResult += currentPart
-                                    }
-                                }
-                                transliterated = partsResult
-                            } else {
-                                transliterated = EnglishTransliterator.transliterateWord(folded)
-                            }
-                        }
-                        // Cache the result
-                        transliterationCache[token] = transliterated
-                        processedToken = transliterated
-                    }
-                } else {
-                    processedToken = token
-                }
-                
-                result += processedToken
-                lastOffset = match.range.location + match.range.length
-            }
-            
-            if lastOffset < nsString.length {
-                let gapRange = NSRange(location: lastOffset, length: nsString.length - lastOffset)
+        // 2. Tiến hành khớp từ điển tiếng Anh và chạy bộ quy tắc
+        appLog("🚀 [Preprocess] Step 2: Translating English words...")
+        replacedText = replaceDictionaryWords(in: replacedText, type: .word)
+        
+        let nsString = replacedText as NSString
+        let matches = Self.tokenRegex.matches(in: replacedText, options: [], range: NSRange(location: 0, length: nsString.length))
+        
+        var result = ""
+        var lastOffset = 0
+        
+        appLog("🚀 [Preprocess] Step 2b: Processing individual non-Vietnamese tokens...")
+        for match in matches {
+            if match.range.location > lastOffset {
+                let gapRange = NSRange(location: lastOffset, length: match.range.location - lastOffset)
                 result += nsString.substring(with: gapRange)
             }
             
-            // Loại bỏ sentinel trước khi trả về kết quả
-            let cleanedResult = result.replacingOccurrences(of: "\u{FEFF}", with: "")
-            appLog("🚀 [Preprocess] Finish preprocessing (with transliteration). Output: '\(cleanedResult)'")
-            return cleanedResult
+            let token = nsString.substring(with: match.range)
+            
+            // Kiểm tra xem token này có phải đã được xử lý bởi từ điển (Sentinel check) hay không
+            var isTranslatedByDict = false
+            if match.range.location > 0 {
+                let prevCharRange = NSRange(location: match.range.location - 1, length: 1)
+                if nsString.substring(with: prevCharRange) == "\u{FEFF}" {
+                    isTranslatedByDict = true
+                }
+            }
+            
+            let processedToken: String
+            if isTranslatedByDict {
+                processedToken = token
+            } else if token.count > 1 && token != "mc" && !VietnameseWordChecker.isVietnameseWord(token) {
+                // Check cache first
+                if let cached = transliterationCache[token] {
+                    processedToken = cached
+                } else {
+                    // Tự động chuẩn hóa dấu phụ (ví dụ: ryū -> ryu, arigatō -> arigato)
+                    let folded = token.folding(options: .diacriticInsensitive, locale: nil)
+                    
+                    let transliterated: String
+                    if let dictMatch = lookupWord(folded) {
+                        transliterated = dictMatch
+                    } else if JapaneseTransliterator.isJapaneseRomaji(folded) {
+                        transliterated = JapaneseTransliterator.transliterateRomaji(folded)
+                    } else {
+                        if folded.contains("-") || folded.contains(".") {
+                            var partsResult = ""
+                            var currentPart = ""
+                            for char in folded {
+                                if char == "-" || char == "." {
+                                    if !currentPart.isEmpty {
+                                        if !VietnameseWordChecker.isVietnameseWord(currentPart) {
+                                            if JapaneseTransliterator.isJapaneseRomaji(currentPart) {
+                                                partsResult += JapaneseTransliterator.transliterateRomaji(currentPart)
+                                            } else {
+                                                partsResult += EnglishTransliterator.transliterateWord(currentPart)
+                                            }
+                                        } else {
+                                            partsResult += currentPart
+                                        }
+                                        currentPart = ""
+                                    }
+                                    partsResult.append(char)
+                                } else {
+                                    currentPart.append(char)
+                                }
+                            }
+                            if !currentPart.isEmpty {
+                                if !VietnameseWordChecker.isVietnameseWord(currentPart) {
+                                    if JapaneseTransliterator.isJapaneseRomaji(currentPart) {
+                                        partsResult += JapaneseTransliterator.transliterateRomaji(currentPart)
+                                    } else {
+                                        partsResult += EnglishTransliterator.transliterateWord(currentPart)
+                                    }
+                                } else {
+                                    partsResult += currentPart
+                                }
+                            }
+                            transliterated = partsResult
+                        } else {
+                            transliterated = EnglishTransliterator.transliterateWord(folded)
+                        }
+                    }
+                    // Cache the result
+                    transliterationCache[token] = transliterated
+                    processedToken = transliterated
+                }
+            } else {
+                processedToken = token
+            }
+            
+            result += processedToken
+            lastOffset = match.range.location + match.range.length
         }
         
-        let cleanedReplacedText = replacedText.replacingOccurrences(of: "\u{FEFF}", with: "")
-        appLog("🚀 [Preprocess] Finish preprocessing. Output: '\(cleanedReplacedText)'")
-        return cleanedReplacedText
+        if lastOffset < nsString.length {
+            let gapRange = NSRange(location: lastOffset, length: nsString.length - lastOffset)
+            result += nsString.substring(with: gapRange)
+        }
+        
+        // Loại bỏ sentinel trước khi trả về kết quả
+        let cleanedResult = result.replacingOccurrences(of: "\u{FEFF}", with: "")
+        appLog("🚀 [Preprocess] Finish preprocessing. Output: '\(cleanedResult)'")
+        return cleanedResult
     }
 }
