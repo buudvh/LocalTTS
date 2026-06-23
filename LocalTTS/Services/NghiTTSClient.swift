@@ -29,7 +29,7 @@ final class NghiTTSClient {
         let models: [String]
     }
 
-    private let baseURL = URL(string: "https://github.com/buudvh/LocalTTS-Voice-Models/releases/download/v1.0")!
+    private let baseURL = URL(string: "https://huggingface.co/raikiri1498/nghitts/resolve/main")!
     private let session: URLSession
     private let modelStore: ModelStore
 
@@ -113,9 +113,12 @@ final class NghiTTSClient {
         await TextPreprocessor.shared.loadResources()
     }
 
-    func prefetchModels(voices: [String]) async throws -> [PrefetchResult] {
+    func prefetchModels(voices: [String], progressHandler: ((String, Double) -> Void)? = nil) async throws -> [PrefetchResult] {
         let bgSession = BackgroundTaskSession.begin(name: "LocalTTS-DownloadModel")
         defer { bgSession.end() }
+        
+        let totalFiles = voices.count * 2
+        var completedFiles = 0
         
         var results: [PrefetchResult] = []
         for rawVoice in voices {
@@ -126,12 +129,18 @@ final class NghiTTSClient {
             let localConfig = modelStore.modelURL(for: voice.id, extension: "onnx.json")
 
             if !FileManager.default.fileExists(atPath: localOnnx.path) {
+                progressHandler?("Đang tải \(voice.name).onnx...", Double(completedFiles) / Double(totalFiles))
                 try await download(from: onnxURL, to: localOnnx)
             }
+            completedFiles += 1
+            progressHandler?("Đã tải \(voice.name).onnx", Double(completedFiles) / Double(totalFiles))
 
             if !FileManager.default.fileExists(atPath: localConfig.path) {
+                progressHandler?("Đang tải cấu hình \(voice.name)...", Double(completedFiles) / Double(totalFiles))
                 try await download(from: configURL, to: localConfig)
             }
+            completedFiles += 1
+            progressHandler?("Đã tải cấu hình \(voice.name)", Double(completedFiles) / Double(totalFiles))
 
             results.append(PrefetchResult(
                 voice: voice.name,
@@ -141,6 +150,7 @@ final class NghiTTSClient {
                 message: "Cached \(voice.name)"
             ))
         }
+        progressHandler?("Tải hoàn tất!", 1.0)
         return results
     }
 

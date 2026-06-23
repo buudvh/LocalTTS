@@ -18,6 +18,11 @@ struct ContentView: View {
     @State private var downloadProgress = ""
     @State private var isShowingFileImporter = false
     
+    // Progress variables for model downloading
+    @State private var isDownloadingModel = false
+    @State private var downloadProgressValue: Double = 0.0
+    @State private var downloadMessage = ""
+    
     @AppStorage("newlinePauseDuration") private var newlinePause = 0.5
     @AppStorage("sentencePauseDuration") private var sentencePause = 0.4
     @AppStorage("phrasePauseDuration") private var phrasePause = 0.15
@@ -76,13 +81,29 @@ struct ContentView: View {
                     Button("Prefetch Selected Model") {
                         Task { await prefetchSelectedVoice() }
                     }
+                    .disabled(isDownloadingModel || isLoadingVoices)
 
                     let uncached = voices.filter { !appState.modelStore.modelExists(for: $0.id) }
                     if !uncached.isEmpty {
-                        Button(isDownloadingAll ? "Đang tải các Model... (\(downloadProgress))" : "Tải tất cả các Model (\(uncached.count))") {
+                        Button(isDownloadingModel ? "Đang tải các Model..." : "Tải tất cả các Model (\(uncached.count))") {
                             Task { await downloadAllModels(uncached) }
                         }
-                        .disabled(isDownloadingAll)
+                        .disabled(isDownloadingModel)
+                    }
+
+                    if isDownloadingModel {
+                        ProgressView(value: downloadProgressValue) {
+                            Text(downloadMessage)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 8)
+                    }
+
+                    if !prefetchStatus.isEmpty {
+                        Text(prefetchStatus)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     /*
@@ -269,31 +290,44 @@ struct ContentView: View {
     }
 
     private func prefetchSelectedVoice() async {
-        prefetchStatus = "Downloading \(selectedVoice.name)..."
+        isDownloadingModel = true
+        downloadProgressValue = 0.0
+        downloadMessage = "Bắt đầu tải..."
+        prefetchStatus = ""
+        defer { isDownloadingModel = false }
+        
         do {
-            let result = try await appState.nghiClient.prefetchModels(voices: [selectedVoice.name])
-            prefetchStatus = result.first?.message ?? "Done"
+            let result = try await appState.nghiClient.prefetchModels(voices: [selectedVoice.name]) { msg, progress in
+                DispatchQueue.main.async {
+                    self.downloadMessage = msg
+                    self.downloadProgressValue = progress
+                }
+            }
+            prefetchStatus = result.first?.message ?? "Tải hoàn tất!"
         } catch {
-            prefetchStatus = error.localizedDescription
+            prefetchStatus = "Lỗi: \(error.localizedDescription)"
         }
     }
 
     private func downloadAllModels(_ uncached: [Voice]) async {
-        isDownloadingAll = true
-        defer { isDownloadingAll = false }
+        isDownloadingModel = true
+        downloadProgressValue = 0.0
+        downloadMessage = "Bắt đầu tải..."
+        prefetchStatus = ""
+        defer { isDownloadingModel = false }
         
-        var count = 0
-        for voice in uncached {
-            count += 1
-            downloadProgress = "\(count)/\(uncached.count)"
-            appLog("Auto downloading \(voice.name)...")
-            do {
-                _ = try await appState.nghiClient.prefetchModels(voices: [voice.name])
-            } catch {
-                appLog("Failed to prefetch \(voice.name): \(error.localizedDescription)")
+        let voiceNames = uncached.map { $0.name }
+        do {
+            _ = try await appState.nghiClient.prefetchModels(voices: voiceNames) { msg, progress in
+                DispatchQueue.main.async {
+                    self.downloadMessage = msg
+                    self.downloadProgressValue = progress
+                }
             }
+            prefetchStatus = "Đã tải xong toàn bộ \(uncached.count) model!"
+        } catch {
+            prefetchStatus = "Lỗi tải hàng loạt: \(error.localizedDescription)"
         }
-        downloadProgress = "Done"
     }
 
     private func testTTS() async {

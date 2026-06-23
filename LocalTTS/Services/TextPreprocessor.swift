@@ -176,13 +176,19 @@ final class EnglishTransliterator {
         RegexRule(pattern: "ine$", options: .caseInsensitive, template: "ai"),
         RegexRule(pattern: "oke$", options: .caseInsensitive, template: "ốc"),
         RegexRule(pattern: "ome$", options: .caseInsensitive, template: "om"),
-        RegexRule(pattern: "one$", options: .caseInsensitive, template: "oăn"),
+        RegexRule(pattern: "\\bone$", options: .caseInsensitive, template: "oăn"),
+        RegexRule(pattern: "one$", options: .caseInsensitive, template: "ôn"),
         RegexRule(pattern: "uke$", options: .caseInsensitive, template: "ấc"),
         RegexRule(pattern: "ume$", options: .caseInsensitive, template: "uym"),
         RegexRule(pattern: "une$", options: .caseInsensitive, template: "uyn"),
         RegexRule(pattern: "ase$", options: .caseInsensitive, template: "ây"),
         RegexRule(pattern: "ise$", options: .caseInsensitive, template: "ai"),
         RegexRule(pattern: "ose$", options: .caseInsensitive, template: "âu"),
+        RegexRule(pattern: "ace$", options: .caseInsensitive, template: "ây"),
+        RegexRule(pattern: "ice$", options: .caseInsensitive, template: "ai"),
+        RegexRule(pattern: "ope$", options: .caseInsensitive, template: "ốp"),
+        RegexRule(pattern: "ave$", options: .caseInsensitive, template: "ây"),
+        RegexRule(pattern: "ife$", options: .caseInsensitive, template: "ai"),
         RegexRule(pattern: "all$", options: .caseInsensitive, template: "âu"),
         RegexRule(pattern: "ell$", options: .caseInsensitive, template: "eo"),
         RegexRule(pattern: "ill$", options: .caseInsensitive, template: "iu"),
@@ -283,22 +289,35 @@ final class EnglishTransliterator {
         RegexRule(pattern: "uu$", options: .caseInsensitive, template: "u")
     ]
     
-    static let tRules: [RegexRule] = [
-        RegexRule(pattern: "j", options: .caseInsensitive, template: "d"),
-        RegexRule(pattern: "z", options: .caseInsensitive, template: "d"),
-        RegexRule(pattern: "w", options: .caseInsensitive, template: "u"),
-        RegexRule(pattern: "x", options: .caseInsensitive, template: "x"),
-        RegexRule(pattern: "v", options: .caseInsensitive, template: "v"),
-        RegexRule(pattern: "f", options: .caseInsensitive, template: "ph"),
-        RegexRule(pattern: "s", options: .caseInsensitive, template: "x"),
-        RegexRule(pattern: "c", options: .caseInsensitive, template: "k"),
-        RegexRule(pattern: "q", options: .caseInsensitive, template: "ku"),
-        RegexRule(pattern: "a", options: .caseInsensitive, template: "a"),
-        RegexRule(pattern: "e", options: .caseInsensitive, template: "e"),
-        RegexRule(pattern: "i", options: .caseInsensitive, template: "i"),
-        RegexRule(pattern: "o", options: .caseInsensitive, template: "o"),
-        RegexRule(pattern: "u", options: .caseInsensitive, template: "u")
-    ]
+    static let tRules: [RegexRule] = {
+        let v = "aeiouyăâêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
+        return [
+            RegexRule(pattern: "x(?![v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "c"),
+            RegexRule(pattern: "j", options: .caseInsensitive, template: "d"),
+            RegexRule(pattern: "w", options: .caseInsensitive, template: "u"),
+            RegexRule(pattern: "f(?=[v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "ph"),
+            RegexRule(pattern: "f(?![v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "p"),
+            RegexRule(pattern: "s(?=[v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "x"),
+            RegexRule(pattern: "s(?![v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "t"),
+            RegexRule(pattern: "d(?=[v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "đ"),
+            RegexRule(pattern: "d(?![v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "t"),
+            RegexRule(pattern: "z(?=[v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "d"),
+            RegexRule(pattern: "z(?![v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "t"),
+            RegexRule(pattern: "g(?=[v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "g"),
+            RegexRule(pattern: "g(?![v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "c"),
+            RegexRule(pattern: "b(?=[v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "b"),
+            RegexRule(pattern: "b(?![v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "p"),
+            RegexRule(pattern: "c(?=[v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "k"),
+            RegexRule(pattern: "c(?![v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "c"),
+            RegexRule(pattern: "r(?=[v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "r"),
+            RegexRule(pattern: "r(?![v])".replacingOccurrences(of: "v", with: v), options: .caseInsensitive, template: "ơ"),
+            RegexRule(pattern: "a", options: .caseInsensitive, template: "a"),
+            RegexRule(pattern: "e", options: .caseInsensitive, template: "e"),
+            RegexRule(pattern: "i", options: .caseInsensitive, template: "i"),
+            RegexRule(pattern: "o", options: .caseInsensitive, template: "o"),
+            RegexRule(pattern: "u", options: .caseInsensitive, template: "u")
+        ]
+    }()
     
     static func transliterateWord(_ word: String) -> String {
         guard !word.isEmpty else { return "" }
@@ -323,8 +342,7 @@ final class EnglishTransliterator {
         n = n.replacingOccurrences(of: "([bcdfghjklmnpqrstvwxz])y", with: "$1i", options: .regularExpression)
         n = n.replacingOccurrences(of: "y$", with: "i", options: .regularExpression)
         
-        let vowels = "aeiouăâêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
-        let splitPattern = try! NSRegularExpression(pattern: "([^\\(vowels\\)]*[\\(vowels\\)]+[ptcmngs]?(?![\\(vowels\\)]))".replacingOccurrences(of: "\\(vowels\\)", with: vowels))
+        let splitPattern = try! NSRegularExpression(pattern: "([^\\(vowels\\)]*[\\(vowels\\)]+[^\\(vowels\\)]*(?![\\(vowels\\)]))".replacingOccurrences(of: "\\(vowels\\)", with: vowels))
         
         let matches = splitPattern.matches(in: n, options: [], range: NSRange(location: 0, length: n.utf16.count))
         let nsString = n as NSString
@@ -396,6 +414,12 @@ final class EnglishTransliterator {
                     if !["p", "t", "c", "m", "n", "g", "s"].contains(w) {
                         if w == "l" {
                             i = String(i.dropLast()) + "n"
+                        } else if w == "k" {
+                            i = String(i.dropLast()) + "c"
+                        } else if w == "d" {
+                            i = String(i.dropLast()) + "t"
+                        } else if w == "g" {
+                            i = String(i.dropLast()) + "c"
                         } else {
                             i = String(i.dropLast())
                         }
