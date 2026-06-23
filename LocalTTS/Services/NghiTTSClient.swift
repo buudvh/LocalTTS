@@ -42,9 +42,19 @@ final class NghiTTSClient {
         let fm = FileManager.default
         let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.plist")
         let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.plist")
-        if forceRefresh || !fm.fileExists(atPath: localAcronyms.path) || !fm.fileExists(atPath: localWords.path) {
+        
+        let currentVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") + "-" + (Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "")
+        let lastVersion = UserDefaults.standard.string(forKey: "LastInstalledVersion") ?? ""
+        
+        var shouldCopy = false
+        if !fm.fileExists(atPath: localAcronyms.path) || !fm.fileExists(atPath: localWords.path) || currentVersion != lastVersion {
+            shouldCopy = true
+        }
+        
+        if forceRefresh || shouldCopy {
             do {
                 try await copyDictionaryPlistsFromBundle()
+                UserDefaults.standard.set(currentVersion, forKey: "LastInstalledVersion")
             } catch {
                 appLog("Warning: Failed to copy plist files: \(error.localizedDescription)")
             }
