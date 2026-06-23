@@ -1724,7 +1724,7 @@ final actor TextPreprocessor {
     )
 
     // MARK: - Main Preprocess Pipeline
-    func preprocess(_ text: String, enableTransliteration: Bool = false) -> String {
+    func preprocess(_ text: String, enableTransliteration: Bool = true) -> String {
         appLog("🚀 [Preprocess] Start preprocessing for: '\(text)' (transliteration: \(enableTransliteration))")
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             appLog("🚀 [Preprocess] Text is empty, returning empty string.")

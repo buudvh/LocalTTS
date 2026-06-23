@@ -13,7 +13,7 @@ struct ContentView: View {
     @State private var testSpeed = 1.0
     @State private var isSynthesizing = false
     @State private var testAudioPlayer: AVAudioPlayer? = nil
-    @State private var enableTransliteration = false
+    @State private var enableTransliteration = true
     @State private var isDownloadingAll = false
     @State private var downloadProgress = ""
     @State private var isShowingFileImporter = false
@@ -155,7 +155,7 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    // Toggle("Dịch phiên âm tiếng Anh", isOn: $enableTransliteration)
+                    Toggle("Dịch phiên âm từ nước ngoài (Anh/Nhật)", isOn: $enableTransliteration)
                     
                     Button(isSynthesizing ? "Synthesizing..." : "Speak") {
                         Task { await testTTS() }

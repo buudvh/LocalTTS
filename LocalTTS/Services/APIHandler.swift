@@ -116,7 +116,7 @@ final class APIHandler {
                     throw APIError.badRequest("Giọng đọc '\(matchedVoice.name)' chưa được tải về server. Vui lòng tải model trên ứng dụng trước khi sử dụng.")
                 }
 
-                let enableTransliteration = body.enableTransliteration ?? false
+                let enableTransliteration = body.enableTransliteration ?? true
 
                 let audio = try await ttsService.synthesize(
                     text: text,
