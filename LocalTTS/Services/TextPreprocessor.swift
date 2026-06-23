@@ -1052,7 +1052,7 @@ final actor TextPreprocessor {
     
     private static func cleanEmojisAndSymbols(_ text: String) -> String {
         var e = text
-        let emojiPattern = "[\\u{1F600}-\\u{1F64F}]|[\\u{1F300}-\\u{1F5FF}]|[\\u{1F680}-\\u{1F6FF}]|[\\u{1F1E0}-\\u{1F1FF}]|[\\u{2600}-\\u{26FF}]|[\\u{2700}-\\u{27BF}]|[\\u{1F900}-\\u{1F9FF}]|[\\u{1F018}-\\u{1F270}]|[\\u{238C}-\\u{2454}]|[\\u{20D0}-\\u{20FF}]|\\u{FE0F}|\\u{200D}"
+        let emojiPattern = "[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|[\u{1F018}-\u{1F270}]|[\u{238C}-\u{2454}]|[\u{20D0}-\u{20FF}]|\u{FE0F}|\u{200D}"
         e = e.replacingOccurrences(of: emojiPattern, with: "", options: .regularExpression)
         
         e = e.replacingOccurrences(of: "[\\\\()¯]", with: "", options: .regularExpression)
@@ -1061,7 +1061,7 @@ final actor TextPreprocessor {
         e = e.replacingOccurrences(of: "\\b_\\b", with: " ", options: .regularExpression)
         e = e.replacingOccurrences(of: "(?<!\\d)-(?!\\d)", with: " ", options: .regularExpression)
         
-        let keepPattern = "[^\\u{0000}-\\u{024F}\\u{1E00}-\\u{1EFF}\\u{3040}-\\u{30FF}]"
+        let keepPattern = "[^\\u0000-\u{024F}\u{1E00}-\u{1EFF}\u{3040}-\u{30FF}]"
         e = e.replacingOccurrences(of: keepPattern, with: "", options: .regularExpression)
         
         return e.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1644,7 +1644,7 @@ final actor TextPreprocessor {
         let typeStr = type == .acronym ? "acronym" : "word"
         appLog("📖 [ReplaceDictionary] Type: \(typeStr), Input: '\(text)'")
         // Tìm toàn bộ các token là từ (word tokens) trong văn bản
-        let wordPattern = "[a-zA-Z0-9_\\u{00C0}-\\u{1EFF}]+"
+        let wordPattern = "[a-zA-Z0-9_\u{00C0}-\u{1EFF}]+"
         guard let regex = try? NSRegularExpression(pattern: wordPattern, options: []) else { return text }
         
         let nsString = text as NSString
@@ -1724,7 +1724,7 @@ final actor TextPreprocessor {
     }
 
     private static let tokenRegex = try! NSRegularExpression(
-        pattern: "[a-zA-Z0-9_\\u{00C0}-\\u{1EFF}]+(?:[-.][a-zA-Z0-9_\\u{00C0}-\\u{1EFF}]+)*",
+        pattern: "[a-zA-Z0-9_\u{00C0}-\u{1EFF}]+(?:[-.][a-zA-Z0-9_\u{00C0}-\u{1EFF}]+)*",
         options: []
     )
 
@@ -1740,13 +1740,13 @@ final actor TextPreprocessor {
         appLog("🚀 [Preprocess] Step 0a: Converting Japanese characters (Romaji)...")
         let romajiText = JapaneseTransliterator.convertToRomaji(text)
         
-        appLog("🚀 [Preprocess] Step 0b: Cleaning emojis and symbols...")
-        let cleaned = Self.cleanEmojisAndSymbols(romajiText)
+        appLog("🚀 [Preprocess] Step 0b: Running Vietnamese text processor...")
+        let processedVi = Self.processVietnameseText(romajiText)
         
-        appLog("🚀 [Preprocess] Step 0c: Running Vietnamese text processor...")
-        let processedVi = Self.processVietnameseText(cleaned)
+        appLog("🚀 [Preprocess] Step 0c: Cleaning emojis and symbols...")
+        let cleaned = Self.cleanEmojisAndSymbols(processedVi)
         
-        let lowercased = processedVi.lowercased()
+        let lowercased = cleaned.lowercased()
         
         // 1. Thay thế từ viết tắt (Acronyms) luôn luôn chạy
         appLog("🚀 [Preprocess] Step 1: Replacing acronyms...")
