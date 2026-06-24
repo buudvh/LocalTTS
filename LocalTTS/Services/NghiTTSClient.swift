@@ -45,17 +45,17 @@ final class NghiTTSClient {
         let currentVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") + "-" + (Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "")
         let lastVersion = UserDefaults.standard.string(forKey: "LastInstalledVersion") ?? ""
         
-        var shouldCopy = false
+        var shouldDownload = false
         if !fm.fileExists(atPath: localWords.path) || currentVersion != lastVersion {
-            shouldCopy = true
+            shouldDownload = true
         }
         
-        if forceRefresh || shouldCopy {
+        if forceRefresh || shouldDownload {
             do {
-                try await copyDictionaryPlistsFromBundle()
+                try await downloadDictionaries()
                 UserDefaults.standard.set(currentVersion, forKey: "LastInstalledVersion")
             } catch {
-                appLog("Warning: Failed to copy plist files: \(error.localizedDescription)")
+                appLog("Warning: Failed to download dictionary files: \(error.localizedDescription)")
             }
         }
 
@@ -112,40 +112,6 @@ final class NghiTTSClient {
         return allVoices
     }
 
-    func copyDictionaryPlistsFromBundle() async throws {
-        // Copy non-vietnamese-words.plist directly from main Bundle to the modelStore directory.
-        let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.plist")
-        let fm = FileManager.default
-        
-        guard let bundleWordsURL = Bundle.main.url(forResource: "non-vietnamese-words", withExtension: "plist") else {
-            throw NSError(domain: "NghiTTSClient", code: 404, userInfo: [NSLocalizedDescriptionKey: "non-vietnamese-words.plist not found in app bundle"])
-        }
-        
-        try fm.createDirectory(at: modelStore.rootURL, withIntermediateDirectories: true)
-        
-        if fm.fileExists(atPath: localWords.path) {
-            if let localData = try? Data(contentsOf: localWords),
-               let localDict = try? PropertyListSerialization.propertyList(from: localData, options: [], format: nil) as? [String: String],
-               let bundleData = try? Data(contentsOf: bundleWordsURL),
-               let bundleDict = try? PropertyListSerialization.propertyList(from: bundleData, options: [], format: nil) as? [String: String] {
-                
-                let mergedDict = bundleDict.merging(localDict) { (_, localValue) in localValue }
-                if let mergedData = try? PropertyListSerialization.data(fromPropertyList: mergedDict, format: .xml, options: 0) {
-                    try? mergedData.write(to: localWords, options: .atomic)
-                }
-            } else {
-                try? fm.removeItem(at: localWords)
-                try fm.copyItem(at: bundleWordsURL, to: localWords)
-            }
-        } else {
-            try fm.copyItem(at: bundleWordsURL, to: localWords)
-        }
-        if let attr = try? fm.attributesOfItem(atPath: bundleWordsURL.path), let size = attr[.size] as? UInt64 {
-            UserDefaults.standard.set(Int(size), forKey: "lastSyncedWordsSize")
-        }
-        
-        await TextPreprocessor.shared.loadResources()
-    }
 
     func downloadDictionaries() async throws {
         let fm = FileManager.default

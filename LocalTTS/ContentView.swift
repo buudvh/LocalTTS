@@ -37,6 +37,37 @@ struct ContentView: View {
     // Progress variables for model downloading in Model tab
     @State private var downloadingStatus: [String: Double] = [:]
     @State private var downloadingMessages: [String: String] = [:]
+    
+    @State private var toast: ToastConfig? = nil
+    @State private var toastTask: Task<Void, Never>? = nil
+
+    struct ToastConfig: Identifiable {
+        let id = UUID()
+        let message: String
+        let isError: Bool
+    }
+
+    private func showToast(_ message: String, isError: Bool) {
+        toastTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            toast = ToastConfig(message: message, isError: isError)
+        }
+        toastTask = Task {
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                toast = nil
+            }
+        }
+    }
+
+    private func dismissToast() {
+        toastTask?.cancel()
+        toastTask = nil
+        withAnimation(.easeInOut(duration: 0.2)) {
+            toast = nil
+        }
+    }
 
     // Voice categorization helpers
     private var topVoices: [Voice] {
@@ -45,8 +76,16 @@ struct ContentView: View {
     }
 
     private var systemVoices: [Voice] {
+        let _ = modelRefreshTrigger
         let topNames = ["Ngọc Huyền (mới)", "Mai Phương", "Duy Onyx (mới)", "Ngọc Ngạn"].map { $0.precomposedStringWithCanonicalMapping }
-        return NghiTTSClient.fallbackVietnameseVoices.filter { !topNames.contains($0.name.precomposedStringWithCanonicalMapping) }
+        let baseVoices = NghiTTSClient.fallbackVietnameseVoices.filter { !topNames.contains($0.name.precomposedStringWithCanonicalMapping) }
+        
+        let downloaded = baseVoices.filter { appState.modelStore.modelExists(for: $0.id) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        let notDownloaded = baseVoices.filter { !appState.modelStore.modelExists(for: $0.id) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            
+        return downloaded + notDownloaded
     }
 
     private var customVoices: [Voice] {
@@ -54,11 +93,13 @@ struct ContentView: View {
         let localIDs = appState.modelStore.getLocalVoiceIDs()
         let fallbackIDs = NghiTTSClient.fallbackVietnameseVoices.map { $0.id }
         let customIDs = localIDs.filter { !fallbackIDs.contains($0) }
-        return customIDs.map { id in
+        let unsorted = customIDs.map { id in
             let name = id.replacingOccurrences(of: "_", with: " ").capitalized
             return Voice(id: id, name: name)
         }
+        return unsorted.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
+
 
     var body: some View {
         TabView(selection: $activeTab) {
@@ -315,7 +356,12 @@ struct ContentView: View {
 
                     Section("Logs") {
                         Button("View Logs") {
-                            shareLogFolder()
+                            shareLogFile()
+                        }
+                        
+                        Button("Clear Logs", role: .destructive) {
+                            AppLogger.shared.clearLogs()
+                            showToast("Đã xóa toàn bộ nhật ký log thành công.", isError: false)
                         }
                     }
 
@@ -343,7 +389,7 @@ struct ContentView: View {
         }
         .fileImporter(
             isPresented: $isShowingFileImporter,
-            allowedContentTypes: [.item],
+            allowedContentTypes: [.onnx, .json],
             allowsMultipleSelection: true
         ) { result in
             switch result {
@@ -356,6 +402,23 @@ struct ContentView: View {
             }
         }
         .dismissKeyboardOnTap()
+        .overlay(alignment: .top) {
+            if let toast = toast {
+                Text(toast.message)
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                    .background(toast.isError ? Color.red.opacity(0.9) : Color.black.opacity(0.85))
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.15), radius: 4)
+                    .padding(.top, 10)
+                    .transition(.opacity)
+                    .onTapGesture {
+                        dismissToast()
+                    }
+            }
+        }
     }
 
     @ViewBuilder
@@ -455,18 +518,27 @@ struct ContentView: View {
         do {
             try appState.modelStore.deleteModel(for: voice.id)
             modelRefreshTrigger += 1
+            showToast("Đã xóa mô hình \(voice.name) thành công.", isError: false)
             Task {
                 await loadVoices(forceRefresh: false)
             }
         } catch {
+            showToast("Lỗi xóa mô hình \(voice.name): \(error.localizedDescription)", isError: true)
             appState.lastError = "Lỗi xóa model \(voice.name): \(error.localizedDescription)"
         }
     }
 
-    private func shareLogFolder() {
+    private func shareLogFile() {
         let logFolderURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let logURL = logFolderURL.appendingPathComponent("app.log")
+        
+        guard FileManager.default.fileExists(atPath: logURL.path) else {
+            showToast("Không tìm thấy tệp nhật ký log.", isError: true)
+            return
+        }
+        
         #if canImport(UIKit)
-        let activityVC = UIActivityViewController(activityItems: [logFolderURL], applicationActivities: nil)
+        let activityVC = UIActivityViewController(activityItems: [logURL], applicationActivities: nil)
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let rootVC = windowScene.windows.first?.rootViewController {
             if let popover = activityVC.popoverPresentationController {
@@ -524,6 +596,9 @@ struct ContentView: View {
         var importCount = 0
         var errorCount = 0
         
+        let onnxUrls = urls.filter { $0.pathExtension.lowercased() == "onnx" }
+        let singleOnnxVoiceId = onnxUrls.count == 1 ? onnxUrls[0].deletingPathExtension().lastPathComponent.toASCIIID : nil
+        
         for url in urls {
             let access = url.startAccessingSecurityScopedResource()
             defer {
@@ -535,32 +610,62 @@ struct ContentView: View {
             let ext = url.pathExtension.lowercased()
             let filename = url.lastPathComponent
             
+            var targetURL: URL? = nil
             do {
-                let targetURL: URL
+                let resolvedTarget: URL
                 if ext == "onnx" {
                     let voiceId = url.deletingPathExtension().lastPathComponent.toASCIIID
-                    targetURL = appState.modelStore.modelURL(for: voiceId, extension: "onnx")
-                } else if ext == "json" {
-                    let baseName = url.deletingPathExtension().lastPathComponent
-                    let voiceId: String
-                    if baseName.lowercased().hasSuffix(".onnx") {
-                        voiceId = String(baseName.dropLast(5)).toASCIIID
-                    } else {
-                        voiceId = baseName.toASCIIID
+                    guard !voiceId.isEmpty else {
+                        throw NSError(domain: "ContentView", code: 1, userInfo: [NSLocalizedDescriptionKey: "ID mô hình không hợp lệ."])
                     }
-                    targetURL = appState.modelStore.modelURL(for: voiceId, extension: "onnx.json")
+                    resolvedTarget = appState.modelStore.modelURL(for: voiceId, extension: "onnx")
+                } else if ext == "json" {
+                    let voiceId: String
+                    if let predeterminedId = singleOnnxVoiceId {
+                        voiceId = predeterminedId
+                    } else {
+                        let baseName = url.deletingPathExtension().lastPathComponent
+                        if baseName.lowercased().hasSuffix(".onnx") {
+                            voiceId = String(baseName.dropLast(5)).toASCIIID
+                        } else {
+                            voiceId = baseName.toASCIIID
+                        }
+                    }
+                    guard !voiceId.isEmpty else {
+                        throw NSError(domain: "ContentView", code: 2, userInfo: [NSLocalizedDescriptionKey: "ID cấu hình không hợp lệ."])
+                    }
+                    resolvedTarget = appState.modelStore.modelURL(for: voiceId, extension: "onnx.json")
                 } else {
                     continue
                 }
                 
-                if fm.fileExists(atPath: targetURL.path) {
-                    try fm.removeItem(at: targetURL)
+                // Validate file before copying
+                if ext == "onnx" {
+                    let attrs = try fm.attributesOfItem(atPath: url.path)
+                    let fileSize = attrs[.size] as? UInt64 ?? 0
+                    if fileSize < 1_000_000 {
+                        throw NSError(domain: "ContentView", code: 4, userInfo: [NSLocalizedDescriptionKey: "Kích thước tệp mô hình quá nhỏ (\(fileSize) bytes). Có thể tệp đã bị hỏng."])
+                    }
+                } else if ext == "json" {
+                    let data = try Data(contentsOf: url)
+                    guard let _ = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+                        throw NSError(domain: "ContentView", code: 3, userInfo: [NSLocalizedDescriptionKey: "Cấu hình JSON không hợp lệ hoặc bị hỏng."])
+                    }
                 }
                 
-                try fm.copyItem(at: url, to: targetURL)
+                targetURL = resolvedTarget
+                
+                if fm.fileExists(atPath: resolvedTarget.path) {
+                    try fm.removeItem(at: resolvedTarget)
+                }
+                
+                try streamCopy(from: url, to: resolvedTarget)
                 importCount += 1
             } catch {
                 appLog("Failed to import file \(filename): \(error.localizedDescription)")
+                if let cleanupURL = targetURL, fm.fileExists(atPath: cleanupURL.path) {
+                    try? fm.removeItem(at: cleanupURL)
+                }
                 errorCount += 1
             }
         }
@@ -568,6 +673,54 @@ struct ContentView: View {
         appLog("Imported \(importCount) files. Errors: \(errorCount)")
         modelRefreshTrigger += 1
         await loadVoices(forceRefresh: false)
+        
+        if errorCount > 0 {
+            showToast("Lỗi nhập \(errorCount) tệp mô hình/cấu hình. Vui lòng thử lại.", isError: true)
+        } else if importCount > 0 {
+            showToast("Đã nhập thành công \(importCount) tệp tin.", isError: false)
+        }
+    }
+    
+    private func streamCopy(from sourceURL: URL, to destinationURL: URL) throws {
+        guard let inputStream = InputStream(url: sourceURL) else {
+            throw NSError(domain: "StreamCopy", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to open input stream for \(sourceURL.lastPathComponent)"])
+        }
+        guard let outputStream = OutputStream(url: destinationURL, append: false) else {
+            throw NSError(domain: "StreamCopy", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to open output stream for \(destinationURL.lastPathComponent)"])
+        }
+        
+        inputStream.open()
+        defer { inputStream.close() }
+        outputStream.open()
+        defer { outputStream.close() }
+        
+        let bufferSize = 65536 // 64KB
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        defer { buffer.deallocate() }
+        
+        while inputStream.hasBytesAvailable {
+            let bytesRead = inputStream.read(buffer, maxLength: bufferSize)
+            if bytesRead < 0 {
+                if let error = inputStream.streamError {
+                    throw error
+                }
+                throw NSError(domain: "StreamCopy", code: 3, userInfo: [NSLocalizedDescriptionKey: "Error reading input stream"])
+            } else if bytesRead == 0 {
+                break // End of file
+            }
+            
+            var bytesWritten = 0
+            while bytesWritten < bytesRead {
+                let written = outputStream.write(buffer.advanced(by: bytesWritten), maxLength: bytesRead - bytesWritten)
+                if written < 0 {
+                    if let error = outputStream.streamError {
+                        throw error
+                    }
+                    throw NSError(domain: "StreamCopy", code: 4, userInfo: [NSLocalizedDescriptionKey: "Error writing output stream"])
+                }
+                bytesWritten += written
+            }
+        }
     }
 
     private func prefetchSelectedVoice() async {
@@ -763,6 +916,37 @@ struct DictionaryEditView: View {
     @State private var showingDownloadConfirmation = false
     @State private var showingSuccessAlert = false
     @State private var successMessage = ""
+    
+    @State private var toast: ToastConfig? = nil
+    @State private var toastTask: Task<Void, Never>? = nil
+
+    struct ToastConfig: Identifiable {
+        let id = UUID()
+        let message: String
+        let isError: Bool
+    }
+
+    private func showToast(_ message: String, isError: Bool) {
+        toastTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.3)) {
+            toast = ToastConfig(message: message, isError: isError)
+        }
+        toastTask = Task {
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.3)) {
+                toast = nil
+            }
+        }
+    }
+
+    private func dismissToast() {
+        toastTask?.cancel()
+        toastTask = nil
+        withAnimation(.easeInOut(duration: 0.3)) {
+            toast = nil
+        }
+    }
 
     @State private var visibleCount = 100
 
@@ -912,7 +1096,7 @@ struct DictionaryEditView: View {
         }
         .fileImporter(
             isPresented: $showingFileImporter,
-            allowedContentTypes: [.propertyList],
+            allowedContentTypes: [UTType(filenameExtension: "plist") ?? .propertyList, .propertyList, .xml, .data],
             allowsMultipleSelection: false
         ) { result in
             switch result {
@@ -920,7 +1104,7 @@ struct DictionaryEditView: View {
                 guard let selectedURL = urls.first else { return }
                 importDictionary(from: selectedURL)
             case .failure(let error):
-                self.errorMessage = "Lỗi chọn tệp: \(error.localizedDescription)"
+                showToast("Lỗi chọn tệp: \(error.localizedDescription)", isError: true)
             }
         }
         .alert("Xác nhận tải lại", isPresented: $showingDownloadConfirmation) {
@@ -931,23 +1115,25 @@ struct DictionaryEditView: View {
         } message: {
             Text("Hành động này sẽ tải lại từ điển gốc từ HuggingFace và ghi đè tất cả các từ vựng tùy chỉnh bạn đã thêm. Bạn có chắc chắn muốn tiếp tục?")
         }
-        .alert("Thành công", isPresented: $showingSuccessAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(successMessage)
-        }
-        .alert("Lỗi", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { _ in errorMessage = nil }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            if let error = errorMessage {
-                Text(error)
-            }
-        }
         .task {
             await loadDictionary()
+        }
+        .overlay(alignment: .top) {
+            if let toast = toast {
+                Text(toast.message)
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                    .background(toast.isError ? Color.red.opacity(0.9) : Color.black.opacity(0.85))
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.15), radius: 4)
+                    .padding(.top, 10)
+                    .transition(.opacity)
+                    .onTapGesture {
+                        dismissToast()
+                    }
+            }
         }
     }
 
@@ -966,10 +1152,9 @@ struct DictionaryEditView: View {
             do {
                 try await appState.nghiClient.downloadDictionaries()
                 await loadDictionary()
-                successMessage = "Tải từ điển từ HuggingFace thành công!"
-                showingSuccessAlert = true
+                showToast("Tải từ điển từ HuggingFace thành công!", isError: false)
             } catch {
-                errorMessage = "Không thể tải từ điển: \(error.localizedDescription)"
+                showToast("Không thể tải từ điển: \(error.localizedDescription)", isError: true)
             }
             isLoading = false
         }
@@ -979,10 +1164,17 @@ struct DictionaryEditView: View {
         isLoading = true
         Task {
             do {
-                guard url.startAccessingSecurityScopedResource() else {
-                    throw NSError(domain: "DictionaryEditView", code: 403, userInfo: [NSLocalizedDescriptionKey: "Không có quyền truy cập tệp đã chọn."])
+                let access = url.startAccessingSecurityScopedResource()
+                defer {
+                    if access {
+                        url.stopAccessingSecurityScopedResource()
+                    }
                 }
-                defer { url.stopAccessingSecurityScopedResource() }
+                
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                if let fileSize = attributes[.size] as? UInt64, fileSize > 5_242_880 { // 5MB
+                    throw NSError(domain: "DictionaryEditView", code: 413, userInfo: [NSLocalizedDescriptionKey: "Kích thước tệp tin từ điển vượt quá giới hạn 5MB."])
+                }
                 
                 let data = try Data(contentsOf: url)
                 guard let plistDict = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: String] else {
@@ -997,10 +1189,9 @@ struct DictionaryEditView: View {
                 await TextPreprocessor.shared.loadResources()
                 await loadDictionary()
                 
-                successMessage = "Nhập từ điển thành công! Đã cập nhật \(plistDict.count) từ."
-                showingSuccessAlert = true
+                showToast("Nhập từ điển thành công! Đã cập nhật \(plistDict.count) từ.", isError: false)
             } catch {
-                errorMessage = "Lỗi nhập từ điển: \(error.localizedDescription)"
+                showToast("Lỗi nhập từ điển: \(error.localizedDescription)", isError: true)
             }
             isLoading = false
         }
@@ -1156,5 +1347,11 @@ struct EditWordSheet: View {
                 }
             }
         }
+    }
+}
+
+extension UTType {
+    static var onnx: UTType {
+        UTType(exportedAs: "com.onnxruntime.onnx")
     }
 }

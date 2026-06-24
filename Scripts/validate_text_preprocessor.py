@@ -37,6 +37,8 @@ def load_plist() -> Dict[str, str]:
 
 
 def ensure_overlap_is_empty() -> None:
+    if not PLIST.exists():
+        return
     words = load_vn_unsigned_words()
     data = load_plist()
     overlap = sorted(set(key.lower() for key in data.keys()) & words)

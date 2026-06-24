@@ -7,8 +7,14 @@ protocol PiperEngine {
 final class PiperTTSService {
     private let modelStore: ModelStore
     private let engine: PiperEngine
+    private let lock = NSLock()
+    private var _currentModel: String?
 
-    private(set) var currentModel: String?
+    var currentModel: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return _currentModel
+    }
 
     var engineStatus: String {
         "Piper ONNX C++ & eSpeak-NG local engine is active."
@@ -29,7 +35,9 @@ final class PiperTTSService {
             throw APIError.modelNotCached("Model '\(voice)' is not cached. Call /v1/models/prefetch first.")
         }
 
-        currentModel = voice
+        lock.lock()
+        _currentModel = voice
+        lock.unlock()
         
         let preprocessedText = await TextPreprocessor.shared.preprocess(text)
         

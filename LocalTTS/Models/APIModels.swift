@@ -56,12 +56,12 @@ struct Voice: Codable, Identifiable, Hashable {
 extension String {
     var toASCIIID: String {
         let lowercased = self.lowercased()
-        let folding = lowercased.folding(options: .diacriticInsensitive, locale: .current)
+        let folding = lowercased.folding(options: .diacriticInsensitive, locale: Locale(identifier: "en_US"))
         var result = ""
         var lastWasUnderscore = false
         
         for char in folding {
-            if char.isLetter || char.isNumber {
+            if char.isASCII && (char.isLetter || char.isNumber) {
                 result.append(char)
                 lastWasUnderscore = false
             } else if !lastWasUnderscore {
@@ -70,7 +70,15 @@ extension String {
             }
         }
         
-        return result.trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        let trimmed = result.trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        if trimmed.isEmpty {
+            var hash: UInt64 = 5381
+            for byte in self.utf8 {
+                hash = ((hash << 5) &+ hash) &+ UInt64(byte)
+            }
+            return "voice_" + String(hash)
+        }
+        return trimmed
     }
 }
 

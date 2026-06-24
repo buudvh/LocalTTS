@@ -1188,7 +1188,6 @@ final actor TextPreprocessor {
     }
 
     private static func preprocessLog(_ message: @autoclosure () -> String) {
-        guard UserDefaults.standard.bool(forKey: PreprocessorConfig.debugLoggingKey) else { return }
         appLog(message())
     }
 
@@ -1221,78 +1220,19 @@ final actor TextPreprocessor {
         let fileManager = FileManager.default
         var wordMap: [String: String] = [:]
         var acronymMap: [String: String] = [:]
-        var wordsLoaded = false
-        var acronymsLoaded = false
-
-        // 1. Try loading from Application Support directory
+        
+        // Try loading from Application Support directory
         if let appSupport = try? fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
             let rootURL = appSupport.appendingPathComponent("LocalTTS", isDirectory: true)
             try? fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
             let wordsURL = rootURL.appendingPathComponent("non-vietnamese-words.plist")
             let acronymsURL = rootURL.appendingPathComponent("acronyms.plist")
 
-            // Sync non-vietnamese-words.plist from Bundle if modified/different size
-            if let bundleWordsURL = Bundle.main.url(forResource: "non-vietnamese-words", withExtension: "plist") {
-                let bundleWordsAttr = try? fileManager.attributesOfItem(atPath: bundleWordsURL.path)
-                let bundleWordsSize = Int((bundleWordsAttr?[.size] as? UInt64) ?? 0)
-                let lastSyncedWordsSize = UserDefaults.standard.integer(forKey: "lastSyncedWordsSize")
-                let localExists = fileManager.fileExists(atPath: wordsURL.path)
-                
-                if !localExists {
-                    try? fileManager.copyItem(at: bundleWordsURL, to: wordsURL)
-                    UserDefaults.standard.set(bundleWordsSize, forKey: "lastSyncedWordsSize")
-                } else if lastSyncedWordsSize != bundleWordsSize {
-                    // Merge local edits with new bundle defaults
-                    if let localData = try? Data(contentsOf: wordsURL),
-                       let localDict = try? PropertyListSerialization.propertyList(from: localData, options: [], format: nil) as? [String: String],
-                       let bundleData = try? Data(contentsOf: bundleWordsURL),
-                       let bundleDict = try? PropertyListSerialization.propertyList(from: bundleData, options: [], format: nil) as? [String: String] {
-                        
-                        let mergedDict = bundleDict.merging(localDict) { (_, localValue) in localValue }
-                        if let mergedData = try? PropertyListSerialization.data(fromPropertyList: mergedDict, format: .xml, options: 0) {
-                            try? mergedData.write(to: wordsURL, options: .atomic)
-                        }
-                    } else {
-                        try? fileManager.removeItem(at: wordsURL)
-                        try? fileManager.copyItem(at: bundleWordsURL, to: wordsURL)
-                    }
-                    UserDefaults.standard.set(bundleWordsSize, forKey: "lastSyncedWordsSize")
-                }
-            }
-
-            // Sync acronyms.plist from Bundle if modified/different size
-            if let bundleAcronymsURL = Bundle.main.url(forResource: "acronyms", withExtension: "plist") {
-                let bundleAcronymsAttr = try? fileManager.attributesOfItem(atPath: bundleAcronymsURL.path)
-                let bundleAcronymsSize = Int((bundleAcronymsAttr?[.size] as? UInt64) ?? 0)
-                let lastSyncedAcronymsSize = UserDefaults.standard.integer(forKey: "lastSyncedAcronymsSize")
-                let localExists = fileManager.fileExists(atPath: acronymsURL.path)
-                
-                if !localExists || lastSyncedAcronymsSize != bundleAcronymsSize {
-                    try? fileManager.removeItem(at: acronymsURL)
-                    try? fileManager.copyItem(at: bundleAcronymsURL, to: acronymsURL)
-                    UserDefaults.standard.set(bundleAcronymsSize, forKey: "lastSyncedAcronymsSize")
-                }
-            }
-
             if fileManager.fileExists(atPath: wordsURL.path) {
                 wordMap = Self.loadPlist(from: wordsURL)
-                wordsLoaded = true
             }
             if fileManager.fileExists(atPath: acronymsURL.path) {
                 acronymMap = Self.loadPlist(from: acronymsURL)
-                acronymsLoaded = true
-            }
-        }
-
-        // 2. Fallback to Bundle resources if not loaded
-        if !wordsLoaded {
-            if let bundleURL = Bundle.main.url(forResource: "non-vietnamese-words", withExtension: "plist") {
-                wordMap = Self.loadPlist(from: bundleURL)
-            }
-        }
-        if !acronymsLoaded {
-            if let bundleURL = Bundle.main.url(forResource: "acronyms", withExtension: "plist") {
-                acronymMap = Self.loadPlist(from: bundleURL)
             }
         }
 

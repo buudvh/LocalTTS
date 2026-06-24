@@ -72,8 +72,8 @@ final class APIHandler {
 
             case ("POST", "/v1/dictionary/update"):
                 do {
-                    try await nghiClient.copyDictionaryPlistsFromBundle()
-                    let responseText = "Dictionary files successfully copied from app bundle."
+                    try await nghiClient.downloadDictionaries()
+                    let responseText = "Dictionary files successfully downloaded from HuggingFace."
                     return HTTPResponse(
                         statusCode: 200,
                         reason: "OK",
@@ -84,7 +84,7 @@ final class APIHandler {
                         body: Data(responseText.utf8)
                     )
                 } catch {
-                    throw APIError.upstream("Failed to copy dictionary files from app bundle: \(error.localizedDescription)")
+                    throw APIError.upstream("Failed to download dictionary files from HuggingFace: \(error.localizedDescription)")
                 }
 
             case ("POST", "/v1/tts"):
@@ -101,7 +101,7 @@ final class APIHandler {
                     ? body.voice!.trimmed.precomposedStringWithCanonicalMapping
                     : NghiTTSClient.defaultVietnameseVoice.name
 
-                let voices = try await nghiClient.getAllVoices(forceRefresh: false)
+                let voices = try await nghiClient.fetchVietnameseVoices(forceRefresh: false)
                 guard let matchedVoice = voices.first(where: { $0.name == voiceName || $0.id == voiceName || $0.id == voiceName.toASCIIID }) else {
                     throw APIError.badRequest("Unsupported NghiTTS voice: \(voiceName)")
                 }
