@@ -40,14 +40,13 @@ final class NghiTTSClient {
 
     func fetchVietnameseVoices(forceRefresh: Bool) async throws -> [Voice] {
         let fm = FileManager.default
-        let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.plist")
         let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.plist")
         
         let currentVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") + "-" + (Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "")
         let lastVersion = UserDefaults.standard.string(forKey: "LastInstalledVersion") ?? ""
         
         var shouldCopy = false
-        if !fm.fileExists(atPath: localAcronyms.path) || !fm.fileExists(atPath: localWords.path) || currentVersion != lastVersion {
+        if !fm.fileExists(atPath: localWords.path) || currentVersion != lastVersion {
             shouldCopy = true
         }
         
@@ -95,28 +94,15 @@ final class NghiTTSClient {
     }
 
     func copyDictionaryPlistsFromBundle() async throws {
-        // Copy acronyms.plist and non-vietnamese-words.plist directly from main Bundle to the modelStore directory.
-        let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.plist")
+        // Copy non-vietnamese-words.plist directly from main Bundle to the modelStore directory.
         let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.plist")
         let fm = FileManager.default
-        
-        guard let bundleAcronymsURL = Bundle.main.url(forResource: "acronyms", withExtension: "plist") else {
-            throw NSError(domain: "NghiTTSClient", code: 404, userInfo: [NSLocalizedDescriptionKey: "acronyms.plist not found in app bundle"])
-        }
         
         guard let bundleWordsURL = Bundle.main.url(forResource: "non-vietnamese-words", withExtension: "plist") else {
             throw NSError(domain: "NghiTTSClient", code: 404, userInfo: [NSLocalizedDescriptionKey: "non-vietnamese-words.plist not found in app bundle"])
         }
         
         try fm.createDirectory(at: modelStore.rootURL, withIntermediateDirectories: true)
-        
-        if fm.fileExists(atPath: localAcronyms.path) {
-            try fm.removeItem(at: localAcronyms)
-        }
-        try fm.copyItem(at: bundleAcronymsURL, to: localAcronyms)
-        if let attr = try? fm.attributesOfItem(atPath: bundleAcronymsURL.path), let size = attr[.size] as? UInt64 {
-            UserDefaults.standard.set(Int(size), forKey: "lastSyncedAcronymsSize")
-        }
         
         if fm.fileExists(atPath: localWords.path) {
             if let localData = try? Data(contentsOf: localWords),
@@ -139,6 +125,39 @@ final class NghiTTSClient {
             UserDefaults.standard.set(Int(size), forKey: "lastSyncedWordsSize")
         }
         
+        await TextPreprocessor.shared.loadResources()
+    }
+
+    func downloadDictionaries() async throws {
+        let fm = FileManager.default
+        let localAcronyms = modelStore.rootURL.appendingPathComponent("acronyms.plist")
+        let localWords = modelStore.rootURL.appendingPathComponent("non-vietnamese-words.plist")
+        
+        let acronymsURL = baseURL.appendingPathComponent("acronyms.plist")
+        let wordsURL = baseURL.appendingPathComponent("non-vietnamese-words.plist")
+        
+        // Download acronyms.plist
+        let (acronymsData, responseAcronyms) = try await session.data(from: acronymsURL)
+        try Self.validateHTTP(responseAcronyms)
+        
+        guard (try? PropertyListSerialization.propertyList(from: acronymsData, options: [], format: nil) as? [String: String]) != nil else {
+            throw NSError(domain: "NghiTTSClient", code: 400, userInfo: [NSLocalizedDescriptionKey: "Dữ liệu acronyms.plist không hợp lệ"])
+        }
+        
+        // Download non-vietnamese-words.plist
+        let (wordsData, responseWords) = try await session.data(from: wordsURL)
+        try Self.validateHTTP(responseWords)
+        
+        guard (try? PropertyListSerialization.propertyList(from: wordsData, options: [], format: nil) as? [String: String]) != nil else {
+            throw NSError(domain: "NghiTTSClient", code: 400, userInfo: [NSLocalizedDescriptionKey: "Dữ liệu non-vietnamese-words.plist không hợp lệ"])
+        }
+        
+        // Save files
+        try fm.createDirectory(at: modelStore.rootURL, withIntermediateDirectories: true)
+        try acronymsData.write(to: localAcronyms, options: .atomic)
+        try wordsData.write(to: localWords, options: .atomic)
+        
+        // Reload resources in preprocessor
         await TextPreprocessor.shared.loadResources()
     }
 

@@ -26,7 +26,7 @@
 		000000000000000000000116 /* ONNXPiperEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000216 /* ONNXPiperEngine.swift */; };
 		000000000000000000000117 /* TextPreprocessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000217 /* TextPreprocessor.swift */; };
 		000000000000000000000118 /* BackgroundTaskSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000218 /* BackgroundTaskSession.swift */; };
-		00000000000000000000011C /* acronyms.plist in Resources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000021C /* acronyms.plist */; };
+
 		00000000000000000000011D /* non-vietnamese-words.plist in Resources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000021D /* non-vietnamese-words.plist */; };
 		00000000000000000000011B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000021B /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -52,7 +52,7 @@
 		000000000000000000000216 /* ONNXPiperEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ONNXPiperEngine.swift; sourceTree = "<group>"; };
 		000000000000000000000217 /* TextPreprocessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextPreprocessor.swift; sourceTree = "<group>"; };
 		000000000000000000000218 /* BackgroundTaskSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTaskSession.swift; sourceTree = "<group>"; };
-		00000000000000000000021C /* acronyms.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = acronyms.plist; sourceTree = "<group>"; };
+
 		00000000000000000000021D /* non-vietnamese-words.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = non-vietnamese-words.plist; sourceTree = "<group>"; };
 		00000000000000000000021B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		000000000000000000000301 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -141,7 +141,7 @@
 		000000000000000000000507 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				00000000000000000000021C /* acronyms.plist */,
+
 				00000000000000000000021D /* non-vietnamese-words.plist */,
 			);
 			path = Resources;
@@ -214,7 +214,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				00000000000000000000011C /* acronyms.plist in Resources */,
+
 				00000000000000000000011D /* non-vietnamese-words.plist in Resources */,
 				00000000000000000000011B /* Assets.xcassets in Resources */,
 			);

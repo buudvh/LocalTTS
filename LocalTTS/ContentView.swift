@@ -33,181 +33,174 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Server") {
-                    HStack {
-                        Text(appState.server.isRunning ? "Running" : "Stopped")
-                        Spacer()
-                        Circle()
-                            .fill(appState.server.isRunning ? Color.green : Color.gray)
-                            .frame(width: 10, height: 10)
-                    }
-
-                    Text("http://127.0.0.1:17771")
-                        .font(.system(.body, design: .monospaced))
-                        .textSelection(.enabled)
-
-                    if let lastRequest = appState.server.lastRequest {
-                        Text(lastRequest)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Button(appState.server.isRunning ? "Stop Server" : "Start Server") {
-                        if appState.server.isRunning {
-                            appState.stopServer()
-                        } else {
-                            appState.startServer()
+            TabView {
+                Form {
+                    Section("NghiTTS Voices") {
+                        if isLoadingVoices {
+                            ProgressView()
                         }
-                    }
-                }
 
-                Section("NghiTTS Voices") {
-                    if isLoadingVoices {
-                        ProgressView()
-                    }
-
-                    Picker("Voice", selection: $selectedVoice) {
-                        ForEach(voices.isEmpty ? [selectedVoice] : voices, id: \.self) { voice in
-                            Text(voice.name).tag(voice)
-                        }
-                    }
-
-                    Button("Refresh Voices") {
-                        Task { await loadVoices(forceRefresh: true) }
-                    }
-
-                    Button("Nhập Model Ngoài...") {
-                        isShowingFileImporter = true
-                    }
-
-                    Button("Prefetch Selected Model") {
-                        Task { await prefetchSelectedVoice() }
-                    }
-                    .disabled(isDownloadingModel || isLoadingVoices)
-
-                    let uncached = voices.filter { !appState.modelStore.modelExists(for: $0.id) }
-                    if !uncached.isEmpty {
-                        Button(isDownloadingModel ? "Đang tải các Model..." : "Tải tất cả các Model (\(uncached.count))") {
-                            Task { await downloadAllModels(uncached) }
-                        }
-                        .disabled(isDownloadingModel)
-                    }
-
-                    if isDownloadingModel {
-                        ProgressView(value: downloadProgressValue) {
-                            Text(downloadMessage)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 8)
-                    }
-
-                    if !prefetchStatus.isEmpty {
-                        Text(prefetchStatus)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    /*
-                    Button("Cài đặt lại từ điển từ Bundle") {
-                        Task {
-                            prefetchStatus = "Đang sao chép từ điển..."
-                            do {
-                                try await appState.nghiClient.copyDictionaryPlistsFromBundle()
-                                prefetchStatus = "Cài đặt lại từ điển thành công!"
-                            } catch {
-                                prefetchStatus = "Lỗi cài đặt từ điển: \(error.localizedDescription)"
+                        Picker("Voice", selection: $selectedVoice) {
+                            ForEach(voices.isEmpty ? [selectedVoice] : voices, id: \.self) { voice in
+                                Text(voice.name).tag(voice)
                             }
                         }
-                    }
 
-                    if !prefetchStatus.isEmpty {
-                        Text(prefetchStatus)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    */
-                }
+                        Button("Refresh Voices") {
+                            Task { await loadVoices(forceRefresh: true) }
+                        }
 
-                Section("Test TTS") {
-                    HStack {
-                        TextField("Text to synthesize", text: $testText, axis: .vertical)
-                            .lineLimit(3...10)
-                        
-                        if !testText.isEmpty {
-                            Button(action: {
-                                testText = ""
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
+                        Button("Nhập Model Ngoài...") {
+                            isShowingFileImporter = true
+                        }
+
+                        Button("Prefetch Selected Model") {
+                            Task { await prefetchSelectedVoice() }
+                        }
+                        .disabled(isDownloadingModel || isLoadingVoices)
+
+                        let uncached = voices.filter { !appState.modelStore.modelExists(for: $0.id) }
+                        if !uncached.isEmpty {
+                            Button(isDownloadingModel ? "Đang tải các Model..." : "Tải tất cả các Model (\(uncached.count))") {
+                                Task { await downloadAllModels(uncached) }
+                            }
+                            .disabled(isDownloadingModel)
+                        }
+
+                        if isDownloadingModel {
+                            ProgressView(value: downloadProgressValue) {
+                                Text(downloadMessage)
+                                    .font(.caption)
                                     .foregroundColor(.secondary)
                             }
-                            .buttonStyle(.plain)
+                            .padding(.vertical, 8)
+                        }
+
+                        if !prefetchStatus.isEmpty {
+                            Text(prefetchStatus)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Section("Test TTS") {
+                        HStack {
+                            TextField("Text to synthesize", text: $testText, axis: .vertical)
+                                .lineLimit(3...10)
+                            
+                            if !testText.isEmpty {
+                                Button(action: {
+                                    testText = ""
+                                }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        
+                        Slider(value: $testSpeed, in: 0.5...2.0, step: 0.1) {
+                            Text("Speed")
+                        } minimumValueLabel: {
+                            Text("0.5x")
+                        } maximumValueLabel: {
+                            Text("2.0x")
+                        }
+                        
+                        Text(String(format: "Speed: %.1fx", testSpeed))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Button(isSynthesizing ? "Synthesizing..." : "Speak") {
+                            Task { await testTTS() }
+                        }
+                        .disabled(isSynthesizing || testText.trimmed.isEmpty)
+                    }
+
+                    Section("Cấu hình khoảng ngắt (giây)") {
+                        PrecisionSliderView(title: "Xuống dòng:", value: $newlinePause, defaultValue: 0.5)
+                        PrecisionSliderView(title: "Cuối câu (. ! ?):", value: $sentencePause, defaultValue: 0.4)
+                        PrecisionSliderView(title: "Giữa câu (, ; :):", value: $phrasePause, defaultValue: 0.15)
+                        PrecisionSliderView(title: "Dấu ngoặc (( ) [ ] { } 「 」 etc.):", value: $bracketPause, defaultValue: 0.15)
+                        
+                        Button("Đặt lại mặc định") {
+                            newlinePause = 0.5
+                            sentencePause = 0.4
+                            phrasePause = 0.15
+                            bracketPause = 0.15
+                        }
+                        .foregroundStyle(.red)
+                    }
+                }
+                .tabItem {
+                    Label("TTS", systemImage: "waveform.and.mic")
+                }
+                
+                Form {
+                    Section("Preprocess") {
+                        Toggle("Normalize numbers", isOn: $preprocessorNumericNormalizationEnabled)
+                        Toggle("Replace dictionary words", isOn: $preprocessorDictionaryReplacementEnabled)
+                        NavigationLink("Sửa từ điển ngoại lệ (EN/JP)") {
+                            DictionaryEditView()
+                        }
+                        Toggle("Transliterate EN/JP", isOn: $preprocessorTransliterationEnabled)
+                        Toggle("Debug preprocess logs", isOn: $preprocessorDebugLoggingEnabled)
+                    }
+                }
+                .tabItem {
+                    Label("Từ điển", systemImage: "character.book.closed")
+                }
+                
+                Form {
+                    Section("Server") {
+                        HStack {
+                            Text(appState.server.isRunning ? "Running" : "Stopped")
+                            Spacer()
+                            Circle()
+                                .fill(appState.server.isRunning ? Color.green : Color.gray)
+                                .frame(width: 10, height: 10)
+                        }
+
+                        Text("http://127.0.0.1:17771")
+                            .font(.system(.body, design: .monospaced))
+                            .textSelection(.enabled)
+
+                        if let lastRequest = appState.server.lastRequest {
+                            Text(lastRequest)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Button(appState.server.isRunning ? "Stop Server" : "Start Server") {
+                            if appState.server.isRunning {
+                                appState.stopServer()
+                            } else {
+                                appState.startServer()
+                            }
                         }
                     }
                     
-                    Slider(value: $testSpeed, in: 0.5...2.0, step: 0.1) {
-                        Text("Speed")
-                    } minimumValueLabel: {
-                        Text("0.5x")
-                    } maximumValueLabel: {
-                        Text("2.0x")
+                    Section("Engine") {
+                        Text(appState.ttsService.engineStatus)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    
-                    Text(String(format: "Speed: %.1fx", testSpeed))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
 
-
-                    
-                    Button(isSynthesizing ? "Synthesizing..." : "Speak") {
-                        Task { await testTTS() }
+                    Section("Logs") {
+                        Button("View Logs") {
+                            isShowingLogs = true
+                        }
                     }
-                    .disabled(isSynthesizing || testText.trimmed.isEmpty)
-                }
 
-                Section("Cấu hình khoảng ngắt (giây)") {
-                    PrecisionSliderView(title: "Xuống dòng:", value: $newlinePause, defaultValue: 0.5)
-                    PrecisionSliderView(title: "Cuối câu (. ! ?):", value: $sentencePause, defaultValue: 0.4)
-                    PrecisionSliderView(title: "Giữa câu (, ; :):", value: $phrasePause, defaultValue: 0.15)
-                    PrecisionSliderView(title: "Dấu ngoặc (( ) [ ] { } 「 」 etc.):", value: $bracketPause, defaultValue: 0.15)
-                    
-                    Button("Đặt lại mặc định") {
-                        newlinePause = 0.5
-                        sentencePause = 0.4
-                        phrasePause = 0.15
-                        bracketPause = 0.15
-                    }
-                    .foregroundStyle(.red)
-                }
-
-                Section("Preprocess") {
-                    Toggle("Normalize numbers", isOn: $preprocessorNumericNormalizationEnabled)
-                    Toggle("Replace dictionary words", isOn: $preprocessorDictionaryReplacementEnabled)
-                    NavigationLink("Sửa từ điển ngoại lệ (EN/JP)") {
-                        DictionaryEditView()
-                    }
-                    Toggle("Transliterate EN/JP", isOn: $preprocessorTransliterationEnabled)
-                    Toggle("Debug preprocess logs", isOn: $preprocessorDebugLoggingEnabled)
-                }
-
-                Section("Engine") {
-                    Text(appState.ttsService.engineStatus)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("Logs") {
-                    Button("View Logs") {
-                        isShowingLogs = true
+                    if let error = appState.lastError {
+                        Section("Error") {
+                            Text(error)
+                                .foregroundStyle(.red)
+                        }
                     }
                 }
-
-                if let error = appState.lastError {
-                    Section("Error") {
-                        Text(error)
-                            .foregroundStyle(.red)
-                    }
+                .tabItem {
+                    Label("Hệ thống", systemImage: "server.rack")
                 }
             }
             .scrollDismissesKeyboard(.immediately)
@@ -502,6 +495,7 @@ struct PrecisionSliderView: View {
 
 // MARK: - Dictionary Edit Views
 struct DictionaryEditView: View {
+    @EnvironmentObject private var appState: AppState
     @State private var allWords: [String: String] = [:]
     @State private var sortedKeys: [String] = []
     @State private var searchText = ""
@@ -511,6 +505,11 @@ struct DictionaryEditView: View {
     @State private var errorMessage: String? = nil
     @State private var isLoading = false
     @State private var exportURL: URL? = nil
+    
+    @State private var showingFileImporter = false
+    @State private var showingDownloadConfirmation = false
+    @State private var showingSuccessAlert = false
+    @State private var successMessage = ""
 
     var filteredKeys: [String] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -605,6 +604,16 @@ struct DictionaryEditView: View {
                         }
                     }
                     Button {
+                        showingFileImporter = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.down")
+                    }
+                    Button {
+                        showingDownloadConfirmation = true
+                    } label: {
+                        Image(systemName: "arrow.down.to.line")
+                    }
+                    Button {
                         showingAddSheet = true
                     } label: {
                         Image(systemName: "plus")
@@ -625,6 +634,42 @@ struct DictionaryEditView: View {
                 updateWord(key: entry.key, value: newVal)
             }
         }
+        .fileImporter(
+            isPresented: $showingFileImporter,
+            allowedContentTypes: [.propertyList],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let selectedURL = urls.first else { return }
+                importDictionary(from: selectedURL)
+            case .failure(let error):
+                self.errorMessage = "Lỗi chọn tệp: \(error.localizedDescription)"
+            }
+        }
+        .alert("Xác nhận tải lại", isPresented: $showingDownloadConfirmation) {
+            Button("Hủy", role: .cancel) {}
+            Button("Tải lại", role: .destructive) {
+                downloadDictionaries()
+            }
+        } message: {
+            Text("Hành động này sẽ tải lại từ điển gốc từ HuggingFace và ghi đè tất cả các từ vựng tùy chỉnh bạn đã thêm. Bạn có chắc chắn muốn tiếp tục?")
+        }
+        .alert("Thành công", isPresented: $showingSuccessAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(successMessage)
+        }
+        .alert("Lỗi", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { _ in errorMessage = nil }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let error = errorMessage {
+                Text(error)
+            }
+        }
         .task {
             await loadDictionary()
         }
@@ -637,6 +682,52 @@ struct DictionaryEditView: View {
         sortedKeys = map.keys.sorted()
         exportURL = TextPreprocessor.getWordsURL()
         isLoading = false
+    }
+
+    private func downloadDictionaries() {
+        isLoading = true
+        Task {
+            do {
+                try await appState.nghiClient.downloadDictionaries()
+                await loadDictionary()
+                successMessage = "Tải từ điển từ HuggingFace thành công!"
+                showingSuccessAlert = true
+            } catch {
+                errorMessage = "Không thể tải từ điển: \(error.localizedDescription)"
+            }
+            isLoading = false
+        }
+    }
+
+    private func importDictionary(from url: URL) {
+        isLoading = true
+        Task {
+            do {
+                guard url.startAccessingSecurityScopedResource() else {
+                    throw NSError(domain: "DictionaryEditView", code: 403, userInfo: [NSLocalizedDescriptionKey: "Không có quyền truy cập tệp đã chọn."])
+                }
+                defer { url.stopAccessingSecurityScopedResource() }
+                
+                let data = try Data(contentsOf: url)
+                guard let plistDict = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: String] else {
+                    throw NSError(domain: "DictionaryEditView", code: 400, userInfo: [NSLocalizedDescriptionKey: "Tệp không hợp lệ. Vui lòng chọn tệp .plist chứa định dạng [String: String]."])
+                }
+                
+                guard let localWordsURL = TextPreprocessor.getWordsURL() else {
+                    throw NSError(domain: "DictionaryEditView", code: 500, userInfo: [NSLocalizedDescriptionKey: "Không thể định vị đường dẫn lưu từ điển."])
+                }
+                
+                try data.write(to: localWordsURL, options: .atomic)
+                await TextPreprocessor.shared.loadResources()
+                await loadDictionary()
+                
+                successMessage = "Nhập từ điển thành công! Đã cập nhật \(plistDict.count) từ."
+                showingSuccessAlert = true
+            } catch {
+                errorMessage = "Lỗi nhập từ điển: \(error.localizedDescription)"
+            }
+            isLoading = false
+        }
     }
 
     private func addWord(key: String, value: String) {
