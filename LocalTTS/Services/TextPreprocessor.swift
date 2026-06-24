@@ -1133,6 +1133,54 @@ final actor TextPreprocessor {
         return wordMap[key]
     }
 
+    func getWordMap() -> [String: String] {
+        return wordMap
+    }
+
+    static func getWordsURL() -> URL? {
+        let fileManager = FileManager.default
+        guard let appSupport = try? fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) else {
+            return nil
+        }
+        let rootURL = appSupport.appendingPathComponent("LocalTTS", isDirectory: true)
+        try? fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        return rootURL.appendingPathComponent("non-vietnamese-words.plist")
+    }
+
+    func updateWord(key: String, value: String) async throws {
+        let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmedVal = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { return }
+
+        wordMap[trimmedKey] = trimmedVal
+        try saveWordMapToDisk()
+
+        // Invalidate transliteration cache
+        transliterationCache.removeAll()
+        transliterationCacheOrder.removeAll()
+    }
+
+    func deleteWord(key: String) async throws {
+        let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        wordMap.removeValue(forKey: trimmedKey)
+        try saveWordMapToDisk()
+
+        // Invalidate transliteration cache
+        transliterationCache.removeAll()
+        transliterationCacheOrder.removeAll()
+    }
+
+    private func saveWordMapToDisk() throws {
+        guard let url = Self.getWordsURL() else {
+            throw NSError(domain: "TextPreprocessor", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not locate non-vietnamese-words.plist URL"])
+        }
+
+        let plistData = try PropertyListSerialization.data(fromPropertyList: wordMap, format: .xml, options: 0)
+        try plistData.write(to: url, options: .atomic)
+
+        Self.preprocessLog("Saved \(wordMap.count) words to \(url.path)")
+    }
+
     private init() {
         let loaded = Self.loadResourcesFromDisk()
         self.wordMap = loaded.wordMap
@@ -1190,9 +1238,24 @@ final actor TextPreprocessor {
                 let lastSyncedWordsSize = UserDefaults.standard.integer(forKey: "lastSyncedWordsSize")
                 let localExists = fileManager.fileExists(atPath: wordsURL.path)
                 
-                if !localExists || lastSyncedWordsSize != bundleWordsSize {
-                    try? fileManager.removeItem(at: wordsURL)
+                if !localExists {
                     try? fileManager.copyItem(at: bundleWordsURL, to: wordsURL)
+                    UserDefaults.standard.set(bundleWordsSize, forKey: "lastSyncedWordsSize")
+                } else if lastSyncedWordsSize != bundleWordsSize {
+                    // Merge local edits with new bundle defaults
+                    if let localData = try? Data(contentsOf: wordsURL),
+                       let localDict = try? PropertyListSerialization.propertyList(from: localData, options: [], format: nil) as? [String: String],
+                       let bundleData = try? Data(contentsOf: bundleWordsURL),
+                       let bundleDict = try? PropertyListSerialization.propertyList(from: bundleData, options: [], format: nil) as? [String: String] {
+                        
+                        let mergedDict = bundleDict.merging(localDict) { (_, localValue) in localValue }
+                        if let mergedData = try? PropertyListSerialization.data(fromPropertyList: mergedDict, format: .xml, options: 0) {
+                            try? mergedData.write(to: wordsURL, options: .atomic)
+                        }
+                    } else {
+                        try? fileManager.removeItem(at: wordsURL)
+                        try? fileManager.copyItem(at: bundleWordsURL, to: wordsURL)
+                    }
                     UserDefaults.standard.set(bundleWordsSize, forKey: "lastSyncedWordsSize")
                 }
             }

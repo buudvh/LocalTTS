@@ -49,18 +49,6 @@ final class NghiTTSClient {
         var shouldCopy = false
         if !fm.fileExists(atPath: localAcronyms.path) || !fm.fileExists(atPath: localWords.path) || currentVersion != lastVersion {
             shouldCopy = true
-        } else {
-            if let bundleAcronymsURL = Bundle.main.url(forResource: "acronyms", withExtension: "plist"),
-               let bundleWordsURL = Bundle.main.url(forResource: "non-vietnamese-words", withExtension: "plist") {
-                let localAcronymsSize = (try? fm.attributesOfItem(atPath: localAcronyms.path)[.size] as? UInt64) ?? 0
-                let bundleAcronymsSize = (try? fm.attributesOfItem(atPath: bundleAcronymsURL.path)[.size] as? UInt64) ?? 0
-                let localWordsSize = (try? fm.attributesOfItem(atPath: localWords.path)[.size] as? UInt64) ?? 0
-                let bundleWordsSize = (try? fm.attributesOfItem(atPath: bundleWordsURL.path)[.size] as? UInt64) ?? 0
-                
-                if localAcronymsSize != bundleAcronymsSize || localWordsSize != bundleWordsSize {
-                    shouldCopy = true
-                }
-            }
         }
         
         if forceRefresh || shouldCopy {
@@ -131,9 +119,22 @@ final class NghiTTSClient {
         }
         
         if fm.fileExists(atPath: localWords.path) {
-            try fm.removeItem(at: localWords)
+            if let localData = try? Data(contentsOf: localWords),
+               let localDict = try? PropertyListSerialization.propertyList(from: localData, options: [], format: nil) as? [String: String],
+               let bundleData = try? Data(contentsOf: bundleWordsURL),
+               let bundleDict = try? PropertyListSerialization.propertyList(from: bundleData, options: [], format: nil) as? [String: String] {
+                
+                let mergedDict = bundleDict.merging(localDict) { (_, localValue) in localValue }
+                if let mergedData = try? PropertyListSerialization.data(fromPropertyList: mergedDict, format: .xml, options: 0) {
+                    try? mergedData.write(to: localWords, options: .atomic)
+                }
+            } else {
+                try? fm.removeItem(at: localWords)
+                try fm.copyItem(at: bundleWordsURL, to: localWords)
+            }
+        } else {
+            try fm.copyItem(at: bundleWordsURL, to: localWords)
         }
-        try fm.copyItem(at: bundleWordsURL, to: localWords)
         if let attr = try? fm.attributesOfItem(atPath: bundleWordsURL.path), let size = attr[.size] as? UInt64 {
             UserDefaults.standard.set(Int(size), forKey: "lastSyncedWordsSize")
         }

@@ -184,6 +184,9 @@ struct ContentView: View {
                 Section("Preprocess") {
                     Toggle("Normalize numbers", isOn: $preprocessorNumericNormalizationEnabled)
                     Toggle("Replace dictionary words", isOn: $preprocessorDictionaryReplacementEnabled)
+                    NavigationLink("Sửa từ điển ngoại lệ (EN/JP)") {
+                        DictionaryEditView()
+                    }
                     Toggle("Transliterate EN/JP", isOn: $preprocessorTransliterationEnabled)
                     Toggle("Debug preprocess logs", isOn: $preprocessorDebugLoggingEnabled)
                 }
@@ -494,5 +497,295 @@ struct PrecisionSliderView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Dictionary Edit Views
+struct DictionaryEditView: View {
+    @State private var allWords: [String: String] = [:]
+    @State private var sortedKeys: [String] = []
+    @State private var searchText = ""
+    @State private var showingAddSheet = false
+    @State private var editingKey: String? = nil
+    @State private var editingValue: String = ""
+    @State private var errorMessage: String? = nil
+    @State private var isLoading = false
+    @State private var exportURL: URL? = nil
+
+    var filteredKeys: [String] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if query.isEmpty {
+            return Array(sortedKeys.prefix(100))
+        } else {
+            var matches: [String] = []
+            for key in sortedKeys {
+                if key.contains(query) {
+                    matches.append(key)
+                    if matches.count >= 100 {
+                        break
+                    }
+                }
+            }
+            return matches
+        }
+    }
+
+    var body: some View {
+        VStack {
+            if isLoading {
+                ProgressView("Đang tải từ điển...")
+                    .frame(maxHeight: .infinity)
+            } else {
+                List {
+                    if searchText.isEmpty {
+                        Section {
+                            Text("Hiển thị 100 từ đầu tiên. Nhập từ khóa để tìm kiếm các từ khác.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    Section {
+                        ForEach(filteredKeys, id: \.self) { key in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(key)
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    Text(allWords[key] ?? "")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "pencil")
+                                    .foregroundColor(.accentColor)
+                                    .font(.subheadline)
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                editingKey = key
+                                editingValue = allWords[key] ?? ""
+                            }
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    deleteWord(key: key)
+                                } label: {
+                                    Label("Xóa", systemImage: "trash")
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("Từ vựng (\(allWords.count) từ)")
+                    }
+                }
+                .searchable(text: $searchText, prompt: "Tìm từ...")
+                .overlay {
+                    if filteredKeys.isEmpty && !searchText.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.largeTitle)
+                                .foregroundColor(.secondary)
+                            Text("Không tìm thấy kết quả cho \"\(searchText)\"")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Sửa từ điển")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack(spacing: 16) {
+                    if let exportURL = exportURL {
+                        ShareLink(item: exportURL) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                    Button {
+                        showingAddSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showingAddSheet) {
+            AddWordSheet(onAdd: { key, val in
+                addWord(key: key, value: val)
+            })
+        }
+        .sheet(item: Binding(
+            get: { editingKey.map { EditingEntry(key: $0, value: editingValue) } },
+            set: { editingKey = $0?.key; editingValue = $0?.value ?? "" }
+        )) { entry in
+            EditWordSheet(key: entry.key, value: entry.value) { newVal in
+                updateWord(key: entry.key, value: newVal)
+            }
+        }
+        .task {
+            await loadDictionary()
+        }
+    }
+
+    private func loadDictionary() async {
+        isLoading = true
+        let map = await TextPreprocessor.shared.getWordMap()
+        allWords = map
+        sortedKeys = map.keys.sorted()
+        exportURL = TextPreprocessor.getWordsURL()
+        isLoading = false
+    }
+
+    private func addWord(key: String, value: String) {
+        Task {
+            do {
+                try await TextPreprocessor.shared.updateWord(key: key, value: value)
+                await loadDictionary()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func updateWord(key: String, value: String) {
+        Task {
+            do {
+                try await TextPreprocessor.shared.updateWord(key: key, value: value)
+                await loadDictionary()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func deleteWord(key: String) {
+        Task {
+            do {
+                try await TextPreprocessor.shared.deleteWord(key: key)
+                await loadDictionary()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+struct EditingEntry: Identifiable {
+    let id: String
+    let key: String
+    let value: String
+
+    init(key: String, value: String) {
+        self.id = key
+        self.key = key
+        self.value = value
+    }
+}
+
+struct AddWordSheet: View {
+    @Environment(\.dismiss) var dismiss
+    @State private var key = ""
+    @State private var value = ""
+    @State private var validationError: String? = nil
+
+    let onAdd: (String, String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Thông tin từ mới") {
+                    TextField("Từ gốc (tiếng Anh/Nhật, e.g. apple)", text: $key)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .onChange(of: key) { newValue in
+                            validateKey(newValue)
+                        }
+
+                    TextField("Phiên âm tiếng Việt (e.g. ép pô)", text: $value)
+                        .autocorrectionDisabled()
+                }
+
+                if let validationError = validationError {
+                    Section {
+                        Text(validationError)
+                            .foregroundColor(.red)
+                            .font(.caption)
+                    }
+                }
+            }
+            .navigationTitle("Thêm từ mới")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Hủy") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Lưu") {
+                        onAdd(key, value)
+                        dismiss()
+                    }
+                    .disabled(key.trimmed.isEmpty || value.trimmed.isEmpty || validationError != nil)
+                }
+            }
+        }
+    }
+
+    private func validateKey(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.contains(" ") {
+            validationError = "Từ gốc không được chứa khoảng trắng"
+        } else if trimmed.rangeOfCharacter(from: CharacterSet.punctuationCharacters) != nil {
+            validationError = "Từ gốc không được chứa dấu câu"
+        } else {
+            validationError = nil
+        }
+    }
+}
+
+struct EditWordSheet: View {
+    @Environment(\.dismiss) var dismiss
+    let key: String
+    @State private var value: String
+    let onSave: (String) -> Void
+
+    init(key: String, value: String, onSave: @escaping (String) -> Void) {
+        self.key = key
+        self._value = State(initialValue: value)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Sửa phiên âm") {
+                    LabeledContent("Từ gốc", value: key)
+                        .foregroundStyle(.secondary)
+
+                    TextField("Phiên âm tiếng Việt", text: $value)
+                        .autocorrectionDisabled()
+                }
+            }
+            .navigationTitle("Sửa từ")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Hủy") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Lưu") {
+                        onSave(value)
+                        dismiss()
+                    }
+                    .disabled(value.trimmed.isEmpty)
+                }
+            }
+        }
     }
 }
