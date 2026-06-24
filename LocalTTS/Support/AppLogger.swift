@@ -13,10 +13,9 @@ final class AppLogger {
             fatalError("Could not locate caches directory.")
         }
         logURL = cacheURL.appendingPathComponent("app.log")
-        // Initialize file
-        if !FileManager.default.fileExists(atPath: logURL.path) {
-            try? "".write(to: logURL, atomically: true, encoding: .utf8)
-        }
+        
+        let isLoggingEnabled = UserDefaults.standard.bool(forKey: PreprocessorSettingKey.debugLoggingEnabled)
+        print("[AppLogger] Khởi tạo. Trạng thái debug log: \(isLoggingEnabled)")
     }
     
     func log(_ message: String) {
@@ -29,18 +28,18 @@ final class AppLogger {
         print(logLine, terminator: "") // Print to console
         
         if let data = logLine.data(using: .utf8) {
-            if FileManager.default.fileExists(atPath: logURL.path) {
-                if let fileHandle = try? FileHandle(forWritingTo: logURL) {
-                    defer { try? fileHandle.close() }
-                    do {
-                        try fileHandle.seekToEnd()
-                        try fileHandle.write(contentsOf: data)
-                    } catch {
-                        print("Failed to write to log file: \(error)")
-                    }
+            if !FileManager.default.fileExists(atPath: logURL.path) {
+                try? "".write(to: logURL, atomically: true, encoding: .utf8)
+            }
+            
+            if let fileHandle = try? FileHandle(forWritingTo: logURL) {
+                defer { try? fileHandle.close() }
+                do {
+                    try fileHandle.seekToEnd()
+                    try fileHandle.write(contentsOf: data)
+                } catch {
+                    print("Failed to write to log file: \(error)")
                 }
-            } else {
-                try? data.write(to: logURL, options: .atomic)
             }
         }
     }

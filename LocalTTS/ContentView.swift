@@ -389,13 +389,21 @@ struct ContentView: View {
         }
         .fileImporter(
             isPresented: $isShowingFileImporter,
-            allowedContentTypes: [.onnx, .json],
+            allowedContentTypes: [.item],
             allowsMultipleSelection: true
         ) { result in
             switch result {
             case .success(let urls):
-                Task {
-                    await importModels(from: urls)
+                let validURLs = urls.filter {
+                    let ext = $0.pathExtension.lowercased()
+                    return ext == "onnx" || ext == "json"
+                }
+                if validURLs.isEmpty {
+                    showToast("Vui lòng chọn tệp tin mô hình (.onnx) hoặc cấu hình (.json).", isError: true)
+                } else {
+                    Task {
+                        await importModels(from: validURLs)
+                    }
                 }
             case .failure(let error):
                 appState.lastError = "Import failed: \(error.localizedDescription)"
@@ -641,8 +649,8 @@ struct ContentView: View {
                 
                 // Validate file before copying
                 if ext == "onnx" {
-                    let attrs = try fm.attributesOfItem(atPath: url.path)
-                    let fileSize = attrs[.size] as? UInt64 ?? 0
+                    let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
+                    let fileSize = resourceValues.fileSize ?? 0
                     if fileSize < 1_000_000 {
                         throw NSError(domain: "ContentView", code: 4, userInfo: [NSLocalizedDescriptionKey: "Kích thước tệp mô hình quá nhỏ (\(fileSize) bytes). Có thể tệp đã bị hỏng."])
                     }
@@ -1096,13 +1104,17 @@ struct DictionaryEditView: View {
         }
         .fileImporter(
             isPresented: $showingFileImporter,
-            allowedContentTypes: [UTType(filenameExtension: "plist") ?? .propertyList, .propertyList, .xml, .data],
+            allowedContentTypes: [.item],
             allowsMultipleSelection: false
         ) { result in
             switch result {
             case .success(let urls):
                 guard let selectedURL = urls.first else { return }
-                importDictionary(from: selectedURL)
+                if selectedURL.pathExtension.lowercased() != "plist" {
+                    showToast("Vui lòng chọn tệp .plist chứa từ điển.", isError: true)
+                } else {
+                    importDictionary(from: selectedURL)
+                }
             case .failure(let error):
                 showToast("Lỗi chọn tệp: \(error.localizedDescription)", isError: true)
             }
@@ -1171,8 +1183,12 @@ struct DictionaryEditView: View {
                     }
                 }
                 
-                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-                if let fileSize = attributes[.size] as? UInt64, fileSize > 5_242_880 { // 5MB
+                let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
+                let fileSize = resourceValues.fileSize ?? 0
+                if fileSize <= 0 {
+                    throw NSError(domain: "DictionaryEditView", code: 400, userInfo: [NSLocalizedDescriptionKey: "Tệp tin từ điển trống hoặc không hợp lệ."])
+                }
+                if fileSize > 5_242_880 { // 5MB
                     throw NSError(domain: "DictionaryEditView", code: 413, userInfo: [NSLocalizedDescriptionKey: "Kích thước tệp tin từ điển vượt quá giới hạn 5MB."])
                 }
                 
