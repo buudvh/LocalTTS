@@ -22,6 +22,10 @@ struct ContentView: View {
     @State private var downloadProgressValue: Double = 0.0
     @State private var downloadMessage = ""
     
+    @AppStorage(PreprocessorSettingKey.numericNormalizationEnabled) private var preprocessorNumericNormalizationEnabled = true
+    @AppStorage(PreprocessorSettingKey.dictionaryReplacementEnabled) private var preprocessorDictionaryReplacementEnabled = true
+    @AppStorage(PreprocessorSettingKey.transliterationEnabled) private var preprocessorTransliterationEnabled = true
+    @AppStorage(PreprocessorSettingKey.debugLoggingEnabled) private var preprocessorDebugLoggingEnabled = false
     @AppStorage("newlinePauseDuration") private var newlinePause = 0.5
     @AppStorage("sentencePauseDuration") private var sentencePause = 0.4
     @AppStorage("phrasePauseDuration") private var phrasePause = 0.15
@@ -175,6 +179,13 @@ struct ContentView: View {
                         bracketPause = 0.15
                     }
                     .foregroundStyle(.red)
+                }
+
+                Section("Preprocess") {
+                    Toggle("Normalize numbers", isOn: $preprocessorNumericNormalizationEnabled)
+                    Toggle("Replace dictionary words", isOn: $preprocessorDictionaryReplacementEnabled)
+                    Toggle("Transliterate EN/JP", isOn: $preprocessorTransliterationEnabled)
+                    Toggle("Debug preprocess logs", isOn: $preprocessorDebugLoggingEnabled)
                 }
 
                 Section("Engine") {

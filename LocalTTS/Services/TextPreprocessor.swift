@@ -4,11 +4,122 @@ import Foundation
 struct RegexRule {
     let regex: NSRegularExpression
     let template: String
-    
+
     init(pattern: String, options: NSRegularExpression.Options = [], template: String) {
         self.regex = try! NSRegularExpression(pattern: pattern, options: options)
         self.template = template
     }
+}
+
+enum PreprocessorSettingKey {
+    static let numericNormalizationEnabled = "preprocessorNumericNormalizationEnabled"
+    static let dictionaryReplacementEnabled = "preprocessorDictionaryReplacementEnabled"
+    static let transliterationEnabled = "preprocessorTransliterationEnabled"
+    static let debugLoggingEnabled = "preprocessorDebugLoggingEnabled"
+}
+
+private enum PreprocessorConfig {
+    static let debugLoggingKey = PreprocessorSettingKey.debugLoggingEnabled
+    static let transliterationCacheLimit = 4096
+    static let transliterationCacheEvictionBatch = 512
+}
+
+private struct PreprocessorRuntimeConfig {
+    let numericNormalizationEnabled: Bool
+    let dictionaryReplacementEnabled: Bool
+    let transliterationEnabled: Bool
+
+    static func load() -> PreprocessorRuntimeConfig {
+        let defaults = UserDefaults.standard
+
+        func boolValue(for key: String, fallback defaultValue: Bool) -> Bool {
+            guard defaults.object(forKey: key) != nil else { return defaultValue }
+            return defaults.bool(forKey: key)
+        }
+
+        return PreprocessorRuntimeConfig(
+            numericNormalizationEnabled: boolValue(for: PreprocessorSettingKey.numericNormalizationEnabled, fallback: true),
+            dictionaryReplacementEnabled: boolValue(for: PreprocessorSettingKey.dictionaryReplacementEnabled, fallback: true),
+            transliterationEnabled: boolValue(for: PreprocessorSettingKey.transliterationEnabled, fallback: true)
+        )
+    }
+}
+
+private enum PreprocessorRegex {
+    static let url = try! NSRegularExpression(pattern: #"https?://\S+"#, options: [])
+    static let www = try! NSRegularExpression(pattern: #"www\.\S+"#, options: [])
+    static let email = try! NSRegularExpression(pattern: #"\S+@\S+\.\S+"#, options: [])
+
+    static let doubleQuotes = try! NSRegularExpression(pattern: #"[\"“”„‟]"#, options: [])
+    static let singleQuotes = try! NSRegularExpression(pattern: #"['‚‛]"#, options: [])
+    static let dashes = try! NSRegularExpression(pattern: #"[–—−]"#, options: [])
+    static let ellipsis = try! NSRegularExpression(pattern: #"\.{3,}"#, options: [])
+    static let repeatedSentencePunctuation = try! NSRegularExpression(pattern: #"([!?.])\1+"#, options: [])
+
+    static let emoji = try! NSRegularExpression(
+        pattern: "[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|[\u{1F018}-\u{1F270}]|[\u{238C}-\u{2454}]|[\u{20D0}-\u{20FF}]|\u{FE0F}|\u{200D}",
+        options: []
+    )
+    static let bracketQuotes = try! NSRegularExpression(pattern: #"[\(\)\\'"]"#, options: [])
+    static let doubleQuoteToSpace = try! NSRegularExpression(pattern: #"["“”]"#, options: [])
+    static let whitespaceBeforePeriod = try! NSRegularExpression(pattern: #"\s—"#, options: [])
+    static let underscoreWord = try! NSRegularExpression(pattern: #"\b_\b"#, options: [])
+    static let nonDigitDash = try! NSRegularExpression(pattern: #"(?<!\d)-(?!\d)"#, options: [])
+    static let allowedChars = try! NSRegularExpression(pattern: #"[^\u0000-\u{024F}\u{1E00}-\u{1EFF}\u{3040}-\u{30FF}]"#, options: [])
+    static let whitespaceCollapse = try! NSRegularExpression(pattern: #"\s+"#, options: [])
+
+    static let thousandsSeparatedNumber = try! NSRegularExpression(pattern: #"(\d{1,3}(?:\.\d{3})+)(?=\s|$|[^\d.,])"#, options: [])
+
+    static let yearRange = try! NSRegularExpression(pattern: #"(\d{4})\s*[-–—]\s*(\d{4})"#, options: [])
+    static let dateRangeWithDayPrefix = try! NSRegularExpression(pattern: #"ngày\s+(\d{1,2})\s*[-–—]\s*(\d{1,2})\s*[/-]\s*(\d{1,2})(?:\s*[/-]\s*(\d{4}))?"#, options: [])
+    static let dateRange = try! NSRegularExpression(pattern: #"(\d{1,2})\s*[-–—]\s*(\d{1,2})\s*[/-]\s*(\d{1,2})(?:\s*[/-]\s*(\d{4}))?"#, options: [])
+    static let monthRangeYear = try! NSRegularExpression(pattern: #"(\d{1,2})\s*[-–—]\s*(\d{1,2})\s*[/-]\s*(\d{4})"#, options: [])
+    static let sinhDate = try! NSRegularExpression(pattern: #"(Sinh|sinh)\s+ngày\s+(\d{1,2})[/-](\d{1,2})[/-](\d{4})"#, options: [])
+    static let fullDate = try! NSRegularExpression(pattern: #"(\d{1,2})[/-](\d{1,2})[/-](\d{4})"#, options: [])
+    static let monthYear = try! NSRegularExpression(pattern: #"(?:tháng\s+)?(\d{1,2})\s*[/-]\s*(\d{4})(?![\/-]\d)"#, options: [])
+    static let dayMonth = try! NSRegularExpression(pattern: #"(\d{1,2})\s*[/-]\s*(\d{1,2})(?![\/-]\d)(?!\d+\s*%)"#, options: [])
+    static let dayMonthWord = try! NSRegularExpression(pattern: #"(\d+)\s*tháng\s*(\d+)"#, options: [])
+    static let monthOnly = try! NSRegularExpression(pattern: #"tháng\s*(\d+)"#, options: [])
+    static let dayOnly = try! NSRegularExpression(pattern: #"ngày\s*(\d+)"#, options: [])
+    static let timeHms = try! NSRegularExpression(pattern: #"(\d{1,2}):(\d{2})(?::(\d{2}))?"#, options: [])
+    static let timeCompactHM = try! NSRegularExpression(pattern: #"(\d{1,2})h(\d{2})(?![a-zà-ỹ])"#, options: [.caseInsensitive])
+    static let timeCompactH = try! NSRegularExpression(pattern: #"(\d{1,2})h(?![a-zà-ỹ\d])"#, options: [.caseInsensitive])
+    static let timeHourMinute = try! NSRegularExpression(pattern: #"(\d+)\s*giờ\s*(\d+)\s*phút"#, options: [])
+    static let timeHourOnly = try! NSRegularExpression(pattern: #"(\d+)\s*giờ(?!\s*\d)"#, options: [])
+
+    static let romanChars = try! NSRegularExpression(pattern: #"^[IVXLCDM]+$"#, options: [])
+    static let romanInvalidRepeat = try! NSRegularExpression(pattern: #"([IVXLCD])\1{3,}|VV|LL|DD"#, options: [])
+    static let romanWordBoundary = try! NSRegularExpression(pattern: #"[\wà-ỹ]"#, options: [.caseInsensitive])
+    static let romanNumerals = try! NSRegularExpression(pattern: #"(^|[\s\W])([IVXLCDMivxlcdm]+)(?=[\s\W]|$)"#, options: [])
+
+    static let currencyVND = try! NSRegularExpression(pattern: #"(\d+(?:,\d+)?)\s*(?:đồng|VND|vnđ)\b"#, options: [.caseInsensitive])
+    static let currencyD = try! NSRegularExpression(pattern: #"(\d+(?:,\d+)?)[đđ](?![a-zà-ỹ])"#, options: [.caseInsensitive])
+    static let dollarPrefix = try! NSRegularExpression(pattern: #"\$\s*(\d+(?:,\d+)?)"#, options: [])
+    static let dollarSuffix = try! NSRegularExpression(pattern: #"(\d+(?:,\d+)?)\s*(?:USD|\$)"#, options: [.caseInsensitive])
+
+    static let percentageRange = try! NSRegularExpression(pattern: #"(\d+)\s*[-–—]\s*(\d+)\s*%"#, options: [])
+    static let percentageDecimal = try! NSRegularExpression(pattern: #"(\d+),(\d+)\s*%"#, options: [])
+    static let percentageSingle = try! NSRegularExpression(pattern: #"(\d+)\s*%"#, options: [])
+
+    static let phone0 = try! NSRegularExpression(pattern: #"0\d{9,10}"#, options: [])
+    static let phone84 = try! NSRegularExpression(pattern: #"\+84\d{9,10}"#, options: [])
+
+    static let decimal = try! NSRegularExpression(pattern: #"(\d+),(\d+)(?=\s|$|[^\d,])"#, options: [])
+    static let digits = try! NSRegularExpression(pattern: #"\b\d+\b"#, options: [])
+
+    static let wordTokens = try! NSRegularExpression(pattern: #"[a-zA-Z0-9_\u{00C0}-\u{1EFF}]+"#, options: [])
+    static let wordChar = try! NSRegularExpression(pattern: #"[a-zA-Zà-ỹ]"#, options: [])
+    static let token = try! NSRegularExpression(pattern: #"[a-zA-Z0-9_\u{00C0}-\u{1EFF}]+(?:[-.][a-zA-Z0-9_\u{00C0}-\u{1EFF}]+)*"#, options: [])
+
+    static let asciiLettersOnly = try! NSRegularExpression(pattern: #"^[a-z]+$"#, options: [])
+    static let romajiVowels = "aeiouyăâêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
+    static let romajiSplit = try! NSRegularExpression(
+        pattern: "([^" + romajiVowels + "]*[" + romajiVowels + "]+[^" + romajiVowels + "]*(?![" + romajiVowels + "]))",
+        options: []
+    )
+
+    static let romajiDoubledConsonant = try! NSRegularExpression(pattern: #"([bcdfghjklmnpqrstvwxz])y"#, options: .caseInsensitive)
+    static let romajiFinalY = try! NSRegularExpression(pattern: #"y$"#, options: .caseInsensitive)
 }
 
 // MARK: - Vietnamese Word Checker
@@ -17,7 +128,7 @@ final class VietnameseWordChecker {
         pattern: "[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]",
         options: .caseInsensitive
     )
-    
+
     private static let vnUnsignedWords: Set<String> = [
         "a", "ai", "am", "an", "ang", "anh", "ao", "au", "ba", "bai",
         "ban", "bang", "banh", "bao", "bay", "be", "bem", "ben", "beng", "beo",
@@ -89,12 +200,12 @@ final class VietnameseWordChecker {
     static func isVietnameseWord(_ word: String) -> Bool {
         let s = word.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         if s.isEmpty { return false }
-        
+
         let range = NSRange(location: 0, length: s.utf16.count)
         if vnAccentRegex.firstMatch(in: s, options: [], range: range) != nil {
             return true
         }
-        
+
         return vnUnsignedWords.contains(s)
     }
 }
@@ -104,7 +215,7 @@ final class VietnameseWordChecker {
 // MARK: - English Transliterator
 final class EnglishTransliterator {
     static let vowels = "aeiouyăâêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
-    
+
     static let sRules: [RegexRule] = [
         RegexRule(pattern: "tion$", options: .caseInsensitive, template: "ân"),
         RegexRule(pattern: "sion$", options: .caseInsensitive, template: "ân"),
@@ -140,7 +251,7 @@ final class EnglishTransliterator {
         RegexRule(pattern: "kn", options: .caseInsensitive, template: "n"),
         RegexRule(pattern: "wr", options: .caseInsensitive, template: "r")
     ]
-    
+
     static let rRules: [RegexRule] = [
         RegexRule(pattern: "le$", options: .caseInsensitive, template: "ồ"),
         RegexRule(pattern: "ook$", options: .caseInsensitive, template: "úc"),
@@ -319,7 +430,7 @@ final class EnglishTransliterator {
         RegexRule(pattern: "ii$", options: .caseInsensitive, template: "i"),
         RegexRule(pattern: "uu$", options: .caseInsensitive, template: "u")
     ]
-    
+
     static let tRules: [RegexRule] = {
         let v = vowels
         return [
@@ -349,7 +460,7 @@ final class EnglishTransliterator {
             RegexRule(pattern: "u", options: .caseInsensitive, template: "u")
         ]
     }()
-    
+
     static func transliterateWord(_ word: String) -> String {
         guard !word.isEmpty else { return "" }
         let vowels = Self.vowels
@@ -360,7 +471,7 @@ final class EnglishTransliterator {
         if n.hasPrefix("d") {
             n = "đ" + n.dropFirst()
         }
-        
+
         for rule in sRules {
             n = rule.regex.stringByReplacingMatches(in: n, options: [], range: NSRange(location: 0, length: n.utf16.count), withTemplate: rule.template)
         }
@@ -370,20 +481,28 @@ final class EnglishTransliterator {
         for rule in tRules {
             n = rule.regex.stringByReplacingMatches(in: n, options: [], range: NSRange(location: 0, length: n.utf16.count), withTemplate: rule.template)
         }
-        
-        n = n.replacingOccurrences(of: "([bcdfghjklmnpqrstvwxz])y", with: "$1i", options: .regularExpression)
-        n = n.replacingOccurrences(of: "y$", with: "i", options: .regularExpression)
-        
-        let splitPattern = try! NSRegularExpression(pattern: "([^\\(vowels\\)]*[\\(vowels\\)]+[^\\(vowels\\)]*(?![\\(vowels\\)]))".replacingOccurrences(of: "\\(vowels\\)", with: vowels))
-        
-        let matches = splitPattern.matches(in: n, options: [], range: NSRange(location: 0, length: n.utf16.count))
+
+        n = PreprocessorRegex.romajiDoubledConsonant.stringByReplacingMatches(
+            in: n,
+            options: [],
+            range: NSRange(location: 0, length: n.utf16.count),
+            withTemplate: "$1i"
+        )
+        n = PreprocessorRegex.romajiFinalY.stringByReplacingMatches(
+            in: n,
+            options: [],
+            range: NSRange(location: 0, length: n.utf16.count),
+            withTemplate: "i"
+        )
+
+        let matches = PreprocessorRegex.romajiSplit.matches(in: n, options: [], range: NSRange(location: 0, length: n.utf16.count))
         let nsString = n as NSString
         let a = matches.map { nsString.substring(with: $0.range) }
-        
+
         if a.isEmpty {
             return n
         }
-        
+
         var g = a.map { part -> String in
             var l = part.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
             if l.isEmpty { return "" }
@@ -399,18 +518,28 @@ final class EnglishTransliterator {
             for rule in tRules {
                 l = rule.regex.stringByReplacingMatches(in: l, options: [], range: NSRange(location: 0, length: l.utf16.count), withTemplate: rule.template)
             }
-            l = l.replacingOccurrences(of: "([bcdfghjklmnpqrstvwxz])y", with: "$1i", options: .regularExpression)
-            l = l.replacingOccurrences(of: "y$", with: "i", options: .regularExpression)
+            l = PreprocessorRegex.romajiDoubledConsonant.stringByReplacingMatches(
+                in: l,
+                options: [],
+                range: NSRange(location: 0, length: l.utf16.count),
+                withTemplate: "$1i"
+            )
+            l = PreprocessorRegex.romajiFinalY.stringByReplacingMatches(
+                in: l,
+                options: [],
+                range: NSRange(location: 0, length: l.utf16.count),
+                withTemplate: "i"
+            )
             return l
         }
-        
+
         g = g.map { part -> String in
             var i = part.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
             if i.isEmpty { return "" }
-            
+
             let lConsonants = "bcdfghjklmnpqrstvwxz"
             i = i.replacingOccurrences(of: "([brlptdgmnckxsvfzjwqh])\\1+", with: "$1", options: .regularExpression)
-            
+
             let mCombos = ["ch", "th", "ph", "sh", "ng", "tr", "nh", "gh", "kh"]
             var p = ""
             let chars = Array(i)
@@ -431,7 +560,7 @@ final class EnglishTransliterator {
                 }
             }
             i = p
-            
+
             if !i.hasPrefix("ch") && !i.hasPrefix("th") && !i.hasPrefix("ph") && !i.hasPrefix("sh") {
                 if i.hasPrefix("k") || i.hasPrefix("c") {
                     let second = i.dropFirst().first.map(String.init) ?? ""
@@ -439,7 +568,7 @@ final class EnglishTransliterator {
                     i = (nextIsKey ? "k" : "c") + i.dropFirst()
                 }
             }
-            
+
             if i.count > 1, let lastChar = i.last {
                 if !vowels.contains(lastChar) {
                     let w = String(lastChar)
@@ -460,7 +589,7 @@ final class EnglishTransliterator {
             }
             return i
         }.filter { !$0.isEmpty }
-        
+
         return g.joined(separator: "-")
     }
 }
@@ -479,13 +608,13 @@ final class JapaneseTransliterator {
         "や": "ya", "ゆ": "yu", "よ": "yo",
         "ら": "ra", "り": "ri", "る": "ru", "れ": "re", "ろ": "ro",
         "わ": "wa", "を": "o", "ん": "n",
-        
+
         "が": "ga", "ぎ": "gi", "ぐ": "gu", "げ": "ge", "ご": "go",
         "ざ": "za", "じ": "ji", "ず": "zu", "ぜ": "ze", "ぞ": "zo",
         "だ": "da", "ぢ": "ji", "づ": "zu", "で": "de", "ど": "do",
         "ば": "ba", "び": "bi", "ぶ": "bu", "べ": "be", "ぼ": "bo",
         "ぱ": "pa", "ぴ": "pi", "ぷ": "pu", "ぺ": "pe", "ぽ": "po",
-        
+
         // Katakana cơ bản
         "ア": "a", "イ": "i", "ウ": "u", "エ": "e", "オ": "o",
         "カ": "ka", "キ": "ki", "ク": "ku", "ケ": "ke", "コ": "ko",
@@ -497,13 +626,13 @@ final class JapaneseTransliterator {
         "ヤ": "ya", "ユ": "yu", "ヨ": "yo",
         "ラ": "ra", "リ": "ri", "ル": "ru", "レ": "re", "ロ": "ro",
         "ワ": "wa", "ヲ": "o", "ン": "n",
-        
+
         "ガ": "ga", "ギ": "gi", "グ": "gu", "ゲ": "ge", "ゴ": "go",
         "ザ": "za", "ジ": "ji", "ズ": "zu", "ゼ": "ze", "ゾ": "zo",
         "ダ": "da", "ヂ": "ji", "ヅ": "zu", "デ": "de", "ド": "do",
         "バ": "ba", "ビ": "bi", "ブ": "bu", "ベ": "be", "ボ": "bo",
         "パ": "pa", "ピ": "pi", "プ": "pu", "ペ": "pe", "ポ": "po",
-        
+
         // Âm ghép Hiragana (Yo-on)
         "きゃ": "kya", "きゅ": "kyu", "きょ": "kyo",
         "しゃ": "sha", "しゅ": "shu", "しょ": "sho",
@@ -516,7 +645,7 @@ final class JapaneseTransliterator {
         "じゃ": "ja", "じゅ": "ju", "じょ": "jo",
         "びゃ": "bya", "びゅ": "byu", "びょ": "byo",
         "ぴゃ": "pya", "ぴゅ": "pyu", "ぴょ": "pyo",
-        
+
         // Âm ghép Katakana (Yo-on)
         "キャ": "kya", "キュ": "kyu", "キョ": "kyo",
         "シャ": "sha", "シュ": "shu", "ショ": "sho",
@@ -529,16 +658,16 @@ final class JapaneseTransliterator {
         "ジャ": "ja", "ジュ": "ju", "ジョ": "jo",
         "ビャ": "bya", "ビュ": "byu", "ビョ": "byo",
         "ピャ": "pya", "ピュ": "pyu", "ピョ": "pyo",
-        
+
         // Ký tự trường âm
         "ー": ""
     ]
-    
+
     static func convertToRomaji(_ text: String) -> String {
         let chars = Array(text)
         var result = ""
         var i = 0
-        
+
         while i < chars.count {
             // Kiểm tra âm ghép Yo-on (2 ký tự)
             if i < chars.count - 1 {
@@ -549,9 +678,9 @@ final class JapaneseTransliterator {
                     continue
                 }
             }
-            
+
             let charStr = String(chars[i])
-            
+
             // Kiểm tra âm ngắt Sokuon (っ/ッ)
             if charStr == "っ" || charStr == "ッ" {
                 if i < chars.count - 1 {
@@ -566,7 +695,7 @@ final class JapaneseTransliterator {
                 i += 1
                 continue
             }
-            
+
             if let romaji = kanaToRomaji[charStr] {
                 result += romaji
             } else {
@@ -766,30 +895,29 @@ final class JapaneseTransliterator {
 
     static func isJapaneseRomaji(_ word: String) -> Bool {
         if word.count < 2 { return false }
-        
+
         let normalized = normalizeRomaji(word)
-        
+
         if englishBlacklist.contains(normalized) { return false }
-        
+
         for ch in normalized {
             if "lqvx".contains(ch) { return false }
         }
-        
-        let regex = try! NSRegularExpression(pattern: "^[a-z]+$")
+
         let range = NSRange(location: 0, length: normalized.utf16.count)
-        if regex.firstMatch(in: normalized, options: [], range: range) == nil {
+        if PreprocessorRegex.asciiLettersOnly.firstMatch(in: normalized, options: [], range: range) == nil {
             return false
         }
-        
+
         let (simplified, _) = simplifySokuon(normalized)
         guard let syllables = greedySegment(simplified) else { return false }
-        
+
         return syllables.count >= 2
     }
 
     static func transliterateRomaji(_ word: String) -> String {
         let normalized = normalizeRomaji(word)
-        
+
         var sokuonChars: [(Int, Character)] = []
         var simplifiedChars: [Character] = []
         let chars = Array(normalized)
@@ -805,13 +933,13 @@ final class JapaneseTransliterator {
             }
         }
         let simplified = String(simplifiedChars)
-        
+
         guard let syllables = greedySegment(simplified) else {
             return word
         }
-        
+
         var viSyllables = syllables.map { romajiToViSyllable[$0] ?? $0 }
-        
+
         var merged: [String] = []
         i = 0
         while i < viSyllables.count {
@@ -823,7 +951,7 @@ final class JapaneseTransliterator {
                 i += 1
             }
         }
-        
+
         if !sokuonChars.isEmpty {
             var pos = 0
             var sylBoundaries: [(Int, Int)] = []
@@ -831,7 +959,7 @@ final class JapaneseTransliterator {
                 sylBoundaries.append((pos, pos + syl.count))
                 pos += syl.count
             }
-            
+
             for (sokuPos, sokuChar) in sokuonChars {
                 for (si, (start, end)) in sylBoundaries.enumerated() {
                     if sokuPos >= start && sokuPos < end {
@@ -845,7 +973,7 @@ final class JapaneseTransliterator {
                 }
             }
         }
-        
+
         return merged.joined(separator: "-")
     }
 
@@ -893,12 +1021,12 @@ final class VietnameseNumberSpeller {
         if e.hasPrefix("-") {
             return "âm " + spell(String(e.dropFirst()))
         }
-        
+
         guard let n = Int(e) else {
             // If too large to parse as Int, map it digit by digit
             return e.map { String($0) }.map { S[Int($0) ?? 0] }.joined(separator: " ")
         }
-        
+
         if n == 0 { return "không" }
         if n < 10 { return S[n] }
         if n < 20 { return V[n] ?? e }
@@ -952,7 +1080,7 @@ final class VietnameseNumberSpeller {
             }
             return prefix + " " + spell(String(r))
         }
-        
+
         return e.map { String($0) }.map { S[Int($0) ?? 0] }.joined(separator: " ")
     }
 }
@@ -960,44 +1088,100 @@ final class VietnameseNumberSpeller {
 // MARK: - Text Preprocessor Service
 final actor TextPreprocessor {
     static let shared = TextPreprocessor()
-    
+
     private var wordMap: [String: String] = [:]
     private var acronymMap: [String: String] = [:]
     private var transliterationCache: [String: String] = [:]
-    
+    private var transliterationCacheOrder: [String] = []
+
+    private struct UnitPatternSpec {
+        let expansion: String
+        let numericRegex: NSRegularExpression
+        let spelledRegex: NSRegularExpression
+    }
+
+    private static let unitPatternSpecs: [UnitPatternSpec] = {
+        let numberSpelledPattern = #"(?:(?:\b(?:một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười|không|trăm|nghìn|triệu|tỷ|lẻ|mốt|tư|lăm|phẩy)\b\s*)+)"#
+        let sortedUnits = unitExpansions.keys.sorted { $0.count > $1.count }
+        return sortedUnits.compactMap { unit in
+            guard let expansion = unitExpansions[unit] else { return nil }
+            let escapedUnit = NSRegularExpression.escapedPattern(for: unit)
+            let numericPattern: String
+            let spelledPattern: String
+
+            if unit.count == 1 {
+                numericPattern = #"(\d+)\s*"# + escapedUnit + #"(?!\s*[a-zA-Zà-ỹ])(?=\s*[^a-zA-Zà-ỹ]|$)"#
+                spelledPattern = #"("# + numberSpelledPattern + #")\s*\b"# + escapedUnit + #"\b(?!\s*[a-zA-Zà-ỹ])(?=\s*[^a-zA-Zà-ỹ]|$)"#
+            } else {
+                numericPattern = #"(\d+)\s*"# + escapedUnit + #"(?=\s|[^\w]|$)"#
+                spelledPattern = #"("# + numberSpelledPattern + #")\s*\b"# + escapedUnit + #"\b(?=\s|[^\w]|$)"#
+            }
+
+            return UnitPatternSpec(
+                expansion: expansion,
+                numericRegex: try! NSRegularExpression(pattern: numericPattern, options: [.caseInsensitive]),
+                spelledRegex: try! NSRegularExpression(pattern: spelledPattern, options: [.caseInsensitive])
+            )
+        }
+    }()
+
     func lookupAcronym(_ key: String) -> String? {
         return acronymMap[key]
     }
-    
+
     func lookupWord(_ key: String) -> String? {
         return wordMap[key]
     }
-    
+
     private init() {
         let loaded = Self.loadResourcesFromDisk()
         self.wordMap = loaded.wordMap
         self.acronymMap = loaded.acronymMap
     }
-    
+
+    private static func preprocessLog(_ message: @autoclosure () -> String) {
+        guard UserDefaults.standard.bool(forKey: PreprocessorConfig.debugLoggingKey) else { return }
+        appLog(message())
+    }
+
+    private func storeTransliteration(_ value: String, for key: String) {
+        if transliterationCache[key] == nil {
+            if transliterationCache.count >= PreprocessorConfig.transliterationCacheLimit {
+                let evictCount = min(PreprocessorConfig.transliterationCacheEvictionBatch, transliterationCacheOrder.count)
+                if evictCount > 0 {
+                    for staleKey in transliterationCacheOrder.prefix(evictCount) {
+                        transliterationCache.removeValue(forKey: String(staleKey))
+                    }
+                    transliterationCacheOrder.removeFirst(evictCount)
+                } else {
+                    transliterationCache.removeAll(keepingCapacity: true)
+                    transliterationCacheOrder.removeAll(keepingCapacity: true)
+                }
+            }
+            transliterationCacheOrder.append(key)
+        }
+        transliterationCache[key] = value
+    }
+
     func loadResources() {
         let loaded = Self.loadResourcesFromDisk()
         self.wordMap = loaded.wordMap
         self.acronymMap = loaded.acronymMap
     }
-    
+
     private static func loadResourcesFromDisk() -> (wordMap: [String: String], acronymMap: [String: String]) {
         let fileManager = FileManager.default
         var wordMap: [String: String] = [:]
         var acronymMap: [String: String] = [:]
         var wordsLoaded = false
         var acronymsLoaded = false
-        
+
         // 1. Try loading from Application Support directory
         if let appSupport = try? fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
             let rootURL = appSupport.appendingPathComponent("LocalTTS", isDirectory: true)
             let wordsURL = rootURL.appendingPathComponent("non-vietnamese-words.plist")
             let acronymsURL = rootURL.appendingPathComponent("acronyms.plist")
-            
+
             if fileManager.fileExists(atPath: wordsURL.path) {
                 wordMap = Self.loadPlist(from: wordsURL)
                 wordsLoaded = true
@@ -1007,7 +1191,7 @@ final actor TextPreprocessor {
                 acronymsLoaded = true
             }
         }
-        
+
         // 2. Fallback to Bundle resources if not loaded
         if !wordsLoaded {
             if let bundleURL = Bundle.main.url(forResource: "non-vietnamese-words", withExtension: "plist") {
@@ -1019,11 +1203,11 @@ final actor TextPreprocessor {
                 acronymMap = Self.loadPlist(from: bundleURL)
             }
         }
-        
-        appLog("Loaded \(wordMap.count) non-Vietnamese words and \(acronymMap.count) acronyms.")
+
+        Self.preprocessLog("Loaded \(wordMap.count) non-Vietnamese words and \(acronymMap.count) acronyms.")
         return (wordMap, acronymMap)
     }
-    
+
     // MARK: - Plist Loading Helper
     private static func loadPlist(from url: URL) -> [String: String] {
         guard let data = try? Data(contentsOf: url),
@@ -1033,12 +1217,11 @@ final actor TextPreprocessor {
         }
         return dict
     }
-    
+
     // MARK: - Regex Replacement Helper
     typealias MatchReplacer = (NSTextCheckingResult, NSString) -> String?
-    
-    private static func replaceMatches(in text: String, pattern: String, options: NSRegularExpression.Options = [], replacer: MatchReplacer) -> String {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return text }
+
+    private static func replaceMatches(in text: String, regex: NSRegularExpression, replacer: MatchReplacer) -> String {
         var result = text
         let nsString = text as NSString
         let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count))
@@ -1049,7 +1232,12 @@ final actor TextPreprocessor {
         }
         return result
     }
-    
+
+    private static func replaceMatches(in text: String, pattern: String, options: NSRegularExpression.Options = [], replacer: MatchReplacer) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return text }
+        return replaceMatches(in: text, regex: regex, replacer: replacer)
+    }
+
     // MARK: - Cleaners & Formatters
     private static func cleanText(_ text: String) -> String {
         var e = text
@@ -1061,49 +1249,43 @@ final actor TextPreprocessor {
         e = e.replacingOccurrences(of: "~", with: "")
         e = e.replacingOccurrences(of: "`", with: "")
         e = e.replacingOccurrences(of: "^", with: "")
-        e = e.replacingOccurrences(of: "https?:\\/\\/\\S+", with: "", options: .regularExpression)
-        e = e.replacingOccurrences(of: "www\\.\\S+", with: "", options: .regularExpression)
-        e = e.replacingOccurrences(of: "\\S+@\\S+\\.\\S+", with: "", options: .regularExpression)
+        e = PreprocessorRegex.url.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: "")
+        e = PreprocessorRegex.www.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: "")
+        e = PreprocessorRegex.email.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: "")
         return e
     }
-    
+
     private static func normalizeQuotesAndDashes(_ text: String) -> String {
         var e = text
-        e = e.replacingOccurrences(of: "[\"\"„‟]", with: "\"", options: .regularExpression)
-        e = e.replacingOccurrences(of: "[''‚‛]", with: "'", options: .regularExpression)
-        e = e.replacingOccurrences(of: "[–—−]", with: "-", options: .regularExpression)
-        e = e.replacingOccurrences(of: "\\.{3,}", with: "...", options: .regularExpression)
+        e = PreprocessorRegex.doubleQuotes.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: "\"")
+        e = PreprocessorRegex.singleQuotes.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: "'")
+        e = PreprocessorRegex.dashes.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: "-")
+        e = PreprocessorRegex.ellipsis.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: "...")
         e = e.replacingOccurrences(of: "…", with: "...")
-        e = e.replacingOccurrences(of: "([!?.])\\1+", with: "$1", options: .regularExpression)
+        e = PreprocessorRegex.repeatedSentencePunctuation.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: "$1")
         return e
     }
-    
+
     private static func cleanEmojisAndSymbols(_ text: String) -> String {
         var e = text
-        let emojiPattern = "[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|[\u{1F018}-\u{1F270}]|[\u{238C}-\u{2454}]|[\u{20D0}-\u{20FF}]|\u{FE0F}|\u{200D}"
-        e = e.replacingOccurrences(of: emojiPattern, with: " ", options: .regularExpression)
-        
-        e = e.replacingOccurrences(of: "[\\\\()¯']", with: " ", options: .regularExpression)
-        e = e.replacingOccurrences(of: "[\"\"\"]", with: " ", options: .regularExpression)
-        e = e.replacingOccurrences(of: "\\s—", with: ".", options: .regularExpression)
-        e = e.replacingOccurrences(of: "\\b_\\b", with: " ", options: .regularExpression)
-        e = e.replacingOccurrences(of: "(?<!\\d)-(?!\\d)", with: " ", options: .regularExpression)
-        
-        let keepPattern = "[^\\u0000-\u{024F}\u{1E00}-\u{1EFF}\u{3040}-\u{30FF}]"
-        e = e.replacingOccurrences(of: keepPattern, with: " ", options: .regularExpression)
-        
-        e = e.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        e = PreprocessorRegex.emoji.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: " ")
+        e = PreprocessorRegex.bracketQuotes.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: " ")
+        e = PreprocessorRegex.doubleQuoteToSpace.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: " ")
+        e = PreprocessorRegex.whitespaceBeforePeriod.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: ".")
+        e = PreprocessorRegex.underscoreWord.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: " ")
+        e = PreprocessorRegex.nonDigitDash.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: " ")
+        e = PreprocessorRegex.allowedChars.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: " ")
+        e = PreprocessorRegex.whitespaceCollapse.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: " ")
         return e.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func formatNumbers(_ text: String) -> String {
-        let pattern = "(\\d{1,3}(?:\\.\\d{3})+)(?=\\s|$|[^\\d.,])"
-        return replaceMatches(in: text, pattern: pattern) { match, ns in
+        return replaceMatches(in: text, regex: PreprocessorRegex.thousandsSeparatedNumber) { match, ns in
             let val = ns.substring(with: match.range(at: 1))
             return val.replacingOccurrences(of: ".", with: "")
         }
     }
-    
+
     // MARK: - Unit, Ranges, Dates, Times, Currency
     private static let units: [String] = [
         "m","cm","mm","km","dm","hm","dam","inch","kg","g","mg","t","tấn","yến","lạng","ml","l","lít",
@@ -1111,7 +1293,7 @@ final actor TextPreprocessor {
         "hr","hrs","km/h","kmh","m/s","ms","mm/h","cm/s","°C","°F","°K","°R","°Re","°Ro","°N","°D"
     ]
     private static let currencies: [String] = ["đồng","VND","vnđ","đ","USD","$"]
-    
+
     private static let unitsPattern: String = {
         let all = Array(Set(units + currencies))
         let escaped = all.map { NSRegularExpression.escapedPattern(for: $0) }
@@ -1119,37 +1301,45 @@ final actor TextPreprocessor {
         return sorted.joined(separator: "|")
     }()
 
+    private static let unitsRangeRegex = try! NSRegularExpression(
+        pattern: #"(\d+)\s*[-–—]\s*(\d+)\s*("# + unitsPattern + #")\b"#,
+        options: [.caseInsensitive]
+    )
+
+    private static let unitsRatioRegex = try! NSRegularExpression(
+        pattern: #"(\d+)\s*[/:]\s*(\d+)\s*("# + unitsPattern + #")\b"#,
+        options: [.caseInsensitive]
+    )
+
     private static func processUnitsRangeAndRatio(_ text: String) -> String {
         var e = text
-        let patternRange = "(\\d+)\\s*[-–—]\\s*(\\d+)\\s*(\(unitsPattern))\\b"
-        e = replaceMatches(in: e, pattern: patternRange, options: [.caseInsensitive]) { match, ns in
+        e = replaceMatches(in: e, regex: unitsRangeRegex) { match, ns in
             let i = ns.substring(with: match.range(at: 1))
             let l = ns.substring(with: match.range(at: 2))
             let h = ns.substring(with: match.range(at: 3))
             let p = h.lowercased() == "đ" ? "" : " "
             return "\(i) đến \(l)\(p)\(h)"
         }
-        
-        let patternRatio = "(\\d+)\\s*[\\/:]\\s*(\\d+)\\s*(\(unitsPattern))\\b"
-        e = replaceMatches(in: e, pattern: patternRatio, options: [.caseInsensitive]) { match, ns in
+
+        e = replaceMatches(in: e, regex: unitsRatioRegex) { match, ns in
             let i = ns.substring(with: match.range(at: 1))
             let l = ns.substring(with: match.range(at: 2))
             let h = ns.substring(with: match.range(at: 3))
             let p = h.lowercased() == "đ" ? "" : " "
             return "\(i) phần \(l)\(p)\(h)"
         }
-        
+
         return e
     }
 
     private static func processYearRanges(_ text: String) -> String {
-        return replaceMatches(in: text, pattern: "(\\d{4})\\s*[-–—]\\s*(\\d{4})") { match, ns in
+        return replaceMatches(in: text, regex: PreprocessorRegex.yearRange) { match, ns in
             let s = ns.substring(with: match.range(at: 1))
             let r = ns.substring(with: match.range(at: 2))
             return "\(VietnameseNumberSpeller.spell(s)) đến \(VietnameseNumberSpeller.spell(r))"
         }
     }
-    
+
     private static func isValidDate(day: String, month: String, year: String? = nil) -> Bool {
         guard let d = Int(day), let m = Int(month) else { return false }
         if let yStr = year, let y = Int(yStr) {
@@ -1165,8 +1355,8 @@ final actor TextPreprocessor {
 
     private static func processDates(_ text: String) -> String {
         var e = text
-        
-        e = replaceMatches(in: e, pattern: "ngày\\s+(\\d{1,2})\\s*[-–—]\\s*(\\d{1,2})\\s*[/-]\\s*(\\d{1,2})(?:\\s*[/-]\\s*(\\d{4}))?") { match, ns in
+
+        e = replaceMatches(in: e, regex: PreprocessorRegex.dateRangeWithDayPrefix) { match, ns in
             let o = ns.substring(with: match.range(at: 1))
             let c = ns.substring(with: match.range(at: 2))
             let a = ns.substring(with: match.range(at: 3))
@@ -1180,8 +1370,8 @@ final actor TextPreprocessor {
             }
             return nil
         }
-        
-        e = replaceMatches(in: e, pattern: "(\\d{1,2})\\s*[-–—]\\s*(\\d{1,2})\\s*[/-]\\s*(\\d{1,2})(?:\\s*[/-]\\s*(\\d{4}))?") { match, ns in
+
+        e = replaceMatches(in: e, regex: PreprocessorRegex.dateRange) { match, ns in
             let start = match.range.location
             let prefixLength = min(10, start)
             let prefixRange = NSRange(location: start - prefixLength, length: prefixLength)
@@ -1191,7 +1381,7 @@ final actor TextPreprocessor {
                     return nil
                 }
             }
-            
+
             let o = ns.substring(with: match.range(at: 1))
             let c = ns.substring(with: match.range(at: 2))
             let a = ns.substring(with: match.range(at: 3))
@@ -1205,8 +1395,8 @@ final actor TextPreprocessor {
             }
             return nil
         }
-        
-        e = replaceMatches(in: e, pattern: "(\\d{1,2})\\s*[-–—]\\s*(\\d{1,2})\\s*[/-]\\s*(\\d{4})") { match, ns in
+
+        e = replaceMatches(in: e, regex: PreprocessorRegex.monthRangeYear) { match, ns in
             let o = ns.substring(with: match.range(at: 1))
             let c = ns.substring(with: match.range(at: 2))
             let a = ns.substring(with: match.range(at: 3))
@@ -1215,8 +1405,8 @@ final actor TextPreprocessor {
             }
             return nil
         }
-        
-        e = replaceMatches(in: e, pattern: "(Sinh|sinh)\\s+ngày\\s+(\\d{1,2})[/-](\\d{1,2})[/-](\\d{4})") { match, ns in
+
+        e = replaceMatches(in: e, regex: PreprocessorRegex.sinhDate) { match, ns in
             let o = ns.substring(with: match.range(at: 1))
             let c = ns.substring(with: match.range(at: 2))
             let a = ns.substring(with: match.range(at: 3))
@@ -1226,8 +1416,8 @@ final actor TextPreprocessor {
             }
             return nil
         }
-        
-        e = replaceMatches(in: e, pattern: "(\\d{1,2})[/-](\\d{1,2})[/-](\\d{4})") { match, ns in
+
+        e = replaceMatches(in: e, regex: PreprocessorRegex.fullDate) { match, ns in
             let o = ns.substring(with: match.range(at: 1))
             let c = ns.substring(with: match.range(at: 2))
             let a = ns.substring(with: match.range(at: 3))
@@ -1236,8 +1426,8 @@ final actor TextPreprocessor {
             }
             return nil
         }
-        
-        e = replaceMatches(in: e, pattern: "(?:tháng\\s+)?(\\d{1,2})\\s*[/-]\\s*(\\d{4})(?![\\/-]\\d)") { match, ns in
+
+        e = replaceMatches(in: e, regex: PreprocessorRegex.monthYear) { match, ns in
             let end = match.range.location + match.range.length
             if end < ns.length {
                 let rest = ns.substring(from: end)
@@ -1252,8 +1442,8 @@ final actor TextPreprocessor {
             }
             return nil
         }
-        
-        e = replaceMatches(in: e, pattern: "(\\d{1,2})\\s*[/-]\\s*(\\d{1,2})(?![\\/-]\\d)(?!\\d+\\s*%)") { match, ns in
+
+        e = replaceMatches(in: e, regex: PreprocessorRegex.dayMonth) { match, ns in
             let o = ns.substring(with: match.range(at: 1))
             let c = ns.substring(with: match.range(at: 2))
             if isValidDate(day: o, month: c) {
@@ -1261,8 +1451,8 @@ final actor TextPreprocessor {
             }
             return nil
         }
-        
-        e = replaceMatches(in: e, pattern: "(\\d+)\\s*tháng\\s*(\\d+)") { match, ns in
+
+        e = replaceMatches(in: e, regex: PreprocessorRegex.dayMonthWord) { match, ns in
             let o = ns.substring(with: match.range(at: 1))
             let c = ns.substring(with: match.range(at: 2))
             if isValidDate(day: o, month: c) {
@@ -1270,30 +1460,30 @@ final actor TextPreprocessor {
             }
             return nil
         }
-        
-        e = replaceMatches(in: e, pattern: "tháng\\s*(\\d+)") { match, ns in
+
+        e = replaceMatches(in: e, regex: PreprocessorRegex.monthOnly) { match, ns in
             let o = ns.substring(with: match.range(at: 1))
             if isValidMonth(month: o) {
                 return "tháng \(VietnameseNumberSpeller.spell(o))"
             }
             return nil
         }
-        
-        e = replaceMatches(in: e, pattern: "ngày\\s*(\\d+)") { match, ns in
+
+        e = replaceMatches(in: e, regex: PreprocessorRegex.dayOnly) { match, ns in
             let o = ns.substring(with: match.range(at: 1))
             if let d = Int(o), d >= 1 && d <= 31 {
                 return "ngày \(VietnameseNumberSpeller.spell(o))"
             }
             return nil
         }
-        
+
         return e
     }
 
     static func processTime(_ text: String) -> String {
         var e = text
-        
-        e = replaceMatches(in: e, pattern: "(\\d{1,2}):(\\d{2})(?::(\\d{2}))?") { match, ns in
+
+        e = replaceMatches(in: e, regex: timeHms) { match, ns in
             let hr = ns.substring(with: match.range(at: 1))
             let min = ns.substring(with: match.range(at: 2))
             var replacement = "\(VietnameseNumberSpeller.spell(hr)) giờ"
@@ -1305,8 +1495,8 @@ final actor TextPreprocessor {
             }
             return replacement
         }
-        
-        e = replaceMatches(in: e, pattern: "(\\d{1,2})h(\\d{2})(?![a-zà-ỹ])", options: [.caseInsensitive]) { match, ns in
+
+        e = replaceMatches(in: e, regex: timeCompactHM) { match, ns in
             let hrStr = ns.substring(with: match.range(at: 1))
             let minStr = ns.substring(with: match.range(at: 2))
             if let hr = Int(hrStr), let min = Int(minStr), hr >= 0 && hr <= 23 && min >= 0 && min <= 59 {
@@ -1314,26 +1504,26 @@ final actor TextPreprocessor {
             }
             return nil
         }
-        
-        e = replaceMatches(in: e, pattern: "(\\d{1,2})h(?![a-zà-ỹ\\d])", options: [.caseInsensitive]) { match, ns in
+
+        e = replaceMatches(in: e, regex: timeCompactH) { match, ns in
             let hrStr = ns.substring(with: match.range(at: 1))
             if let hr = Int(hrStr), hr >= 0 && hr <= 23 {
                 return "\(VietnameseNumberSpeller.spell(hrStr)) giờ"
             }
             return nil
         }
-        
-        e = replaceMatches(in: e, pattern: "(\\d+)\\s*giờ\\s*(\\d+)\\s*phút") { match, ns in
+
+        e = replaceMatches(in: e, regex: timeHourMinute) { match, ns in
             let s = ns.substring(with: match.range(at: 1))
             let r = ns.substring(with: match.range(at: 2))
             return "\(VietnameseNumberSpeller.spell(s)) giờ \(VietnameseNumberSpeller.spell(r)) phút"
         }
-        
-        e = replaceMatches(in: e, pattern: "(\\d+)\\s*giờ(?!\\s*\\d)") { match, ns in
+
+        e = replaceMatches(in: e, regex: timeHourOnly) { match, ns in
             let s = ns.substring(with: match.range(at: 1))
             return "\(VietnameseNumberSpeller.spell(s)) giờ"
         }
-        
+
         return e
     }
 
@@ -1365,17 +1555,15 @@ final actor TextPreprocessor {
     private static func isValidRoman(_ roman: String) -> Bool {
         let a = roman.uppercased()
         if a.isEmpty { return false }
-        
-        let romanCharsRegex = try! NSRegularExpression(pattern: "^[IVXLCDM]+$", options: [])
-        if romanCharsRegex.firstMatch(in: a, options: [], range: NSRange(location: 0, length: a.utf16.count)) == nil {
+
+        if PreprocessorRegex.romanChars.firstMatch(in: a, options: [], range: NSRange(location: 0, length: a.utf16.count)) == nil {
             return false
         }
-        
-        let invalidRepeatRegex = try! NSRegularExpression(pattern: "([IVXLCD])\\\\1{3,}|VV|LL|DD", options: [])
-        if invalidRepeatRegex.firstMatch(in: a, options: [], range: NSRange(location: 0, length: a.utf16.count)) != nil {
+
+        if PreprocessorRegex.romanInvalidRepeat.firstMatch(in: a, options: [], range: NSRange(location: 0, length: a.utf16.count)) != nil {
             return false
         }
-        
+
         let g: [Character: Int] = ["I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000]
         let chars = Array(a)
         for i in 0..<chars.count-1 {
@@ -1385,30 +1573,29 @@ final actor TextPreprocessor {
                 guard let list = allowed[chars[i]], list.contains(chars[i+1]) else { return false }
             }
         }
-        
+
         guard let val = romanToInt(roman) else { return false }
         return val > 0
     }
 
     private static func processRomanNumerals(_ text: String, unlimited: Bool = false) -> String {
-        return replaceMatches(in: text, pattern: "(^|[\\s\\W])([IVXLCDMivxlcdm]+)(?=[\\s\\W]|$)") { match, ns in
+        return replaceMatches(in: text, regex: PreprocessorRegex.romanNumerals) { match, ns in
             let prefix = ns.substring(with: match.range(at: 1))
             let roman = ns.substring(with: match.range(at: 2))
-            
-            let wordCharRegex = try! NSRegularExpression(pattern: "[\\wà-ỹ]", options: [.caseInsensitive])
-            if !prefix.isEmpty && wordCharRegex.firstMatch(in: prefix, options: [], range: NSRange(location: 0, length: prefix.utf16.count)) != nil {
+
+            if !prefix.isEmpty && PreprocessorRegex.romanWordBoundary.firstMatch(in: prefix, options: [], range: NSRange(location: 0, length: prefix.utf16.count)) != nil {
                 return nil
             }
-            
+
             if roman != roman.uppercased() || !isValidRoman(roman) {
                 return nil
             }
-            
+
             guard let val = romanToInt(roman) else { return nil }
             if !unlimited && (val < 1 || val > 30) {
                 return nil
             }
-            
+
             return prefix + String(val)
         }
     }
@@ -1417,56 +1604,50 @@ final actor TextPreprocessor {
 
     private static func processCurrency(_ text: String) -> String {
         var e = text
-        
-        let vndRegex = try! NSRegularExpression(pattern: "(\\d+(?:,\\d+)?)\\s*(?:đồng|VND|vnđ)\\b", options: [.caseInsensitive])
-        while let match = vndRegex.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
+
+        while let match = PreprocessorRegex.currencyVND.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
             let nsString = e as NSString
             let val = nsString.substring(with: match.range(at: 1)).replacingOccurrences(of: ",", with: "")
             let replacement = "\(VietnameseNumberSpeller.spell(val)) đồng"
             e = nsString.replacingCharacters(in: match.range, with: replacement)
         }
-        
-        let dRegex = try! NSRegularExpression(pattern: "(\\d+(?:,\\d+)?)[đđ](?![a-zà-ỹ])", options: [.caseInsensitive])
-        while let match = dRegex.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
+
+        while let match = PreprocessorRegex.currencyD.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
             let nsString = e as NSString
             let val = nsString.substring(with: match.range(at: 1)).replacingOccurrences(of: ",", with: "")
             let replacement = "\(VietnameseNumberSpeller.spell(val)) đồng"
             e = nsString.replacingCharacters(in: match.range, with: replacement)
         }
-        
-        let dollarPrefixRegex = try! NSRegularExpression(pattern: "\\$\\s*(\\d+(?:,\\d+)?)", options: [])
-        while let match = dollarPrefixRegex.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
+
+        while let match = PreprocessorRegex.dollarPrefix.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
             let nsString = e as NSString
             let val = nsString.substring(with: match.range(at: 1)).replacingOccurrences(of: ",", with: "")
             let replacement = "\(VietnameseNumberSpeller.spell(val)) đô la"
             e = nsString.replacingCharacters(in: match.range, with: replacement)
         }
-        
-        let dollarSuffixRegex = try! NSRegularExpression(pattern: "(\\d+(?:,\\d+)?)\\s*(?:USD|\\$)", options: [.caseInsensitive])
-        while let match = dollarSuffixRegex.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
+
+        while let match = PreprocessorRegex.dollarSuffix.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
             let nsString = e as NSString
             let val = nsString.substring(with: match.range(at: 1)).replacingOccurrences(of: ",", with: "")
             let replacement = "\(VietnameseNumberSpeller.spell(val)) đô la"
             e = nsString.replacingCharacters(in: match.range, with: replacement)
         }
-        
+
         return e
     }
 
     private static func processPercentages(_ text: String) -> String {
         var e = text
-        
-        let rangeRegex = try! NSRegularExpression(pattern: "(\\d+)\\s*[-–—]\\s*(\\d+)\\s*%", options: [])
-        while let match = rangeRegex.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
+
+        while let match = PreprocessorRegex.percentageRange.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
             let nsString = e as NSString
             let s = nsString.substring(with: match.range(at: 1))
             let r = nsString.substring(with: match.range(at: 2))
             let replacement = "\(VietnameseNumberSpeller.spell(s)) đến \(VietnameseNumberSpeller.spell(r)) phần trăm"
             e = nsString.replacingCharacters(in: match.range, with: replacement)
         }
-        
-        let decimalRegex = try! NSRegularExpression(pattern: "(\\d+),(\\d+)\\s*%", options: [])
-        while let match = decimalRegex.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
+
+        while let match = PreprocessorRegex.percentageDecimal.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
             let nsString = e as NSString
             let s = nsString.substring(with: match.range(at: 1))
             let r = nsString.substring(with: match.range(at: 2))
@@ -1474,15 +1655,14 @@ final actor TextPreprocessor {
             let replacement = "\(VietnameseNumberSpeller.spell(s)) phẩy \(VietnameseNumberSpeller.spell(cleanedR.isEmpty ? "0" : cleanedR)) phần trăm"
             e = nsString.replacingCharacters(in: match.range, with: replacement)
         }
-        
-        let singleRegex = try! NSRegularExpression(pattern: "(\\d+)\\s*%", options: [])
-        while let match = singleRegex.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
+
+        while let match = PreprocessorRegex.percentageSingle.firstMatch(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count)) {
             let nsString = e as NSString
             let s = nsString.substring(with: match.range(at: 1))
             let replacement = "\(VietnameseNumberSpeller.spell(s)) phần trăm"
             e = nsString.replacingCharacters(in: match.range, with: replacement)
         }
-        
+
         return e
     }
 
@@ -1495,26 +1675,20 @@ final actor TextPreprocessor {
             }
             return digits.joined(separator: " ")
         }
-        var e = replaceMatches(in: text, pattern: "0\\d{9,10}", replacer: phoneReplacer)
-        e = replaceMatches(in: e, pattern: "\\+84\\d{9,10}", replacer: phoneReplacer)
+        var e = replaceMatches(in: text, regex: PreprocessorRegex.phone0, replacer: phoneReplacer)
+        e = replaceMatches(in: e, regex: PreprocessorRegex.phone84, replacer: phoneReplacer)
         return e
     }
 
     private static func processDecimals(_ text: String) -> String {
-        let regex = try! NSRegularExpression(pattern: "(\\d+),(\\d+)(?=\\s|$|[^\\d,])", options: [])
-        var result = text
-        let nsString = text as NSString
-        let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count))
-        for match in matches.reversed() {
-            let s = nsString.substring(with: match.range(at: 1))
-            let r = nsString.substring(with: match.range(at: 2))
+        return replaceMatches(in: text, regex: PreprocessorRegex.decimal) { match, ns in
+            let s = ns.substring(with: match.range(at: 1))
+            let r = ns.substring(with: match.range(at: 2))
             let leftSpelled = VietnameseNumberSpeller.spell(s)
             let cleanedR = r.replacingOccurrences(of: "^0+", with: "", options: .regularExpression)
             let rightSpelled = VietnameseNumberSpeller.spell(cleanedR.isEmpty ? "0" : cleanedR)
-            let replacement = "\(leftSpelled) phẩy \(rightSpelled)"
-            result = (result as NSString).replacingCharacters(in: match.range, with: replacement)
+            return "\(leftSpelled) phẩy \(rightSpelled)"
         }
-        return result
     }
 
     private static let unitExpansions: [String: String] = [
@@ -1533,52 +1707,34 @@ final actor TextPreprocessor {
 
     private static func processUnits(_ text: String) -> String {
         var e = text
-        let sortedUnits = unitExpansions.keys.sorted { $0.count > $1.count }
-        
-        for unit in sortedUnits {
-            guard let expansion = unitExpansions[unit] else { continue }
-            let escapedUnit = NSRegularExpression.escapedPattern(for: unit)
-            
-            let pattern1: String
-            let pattern2: String
-            
-            let numberSpelledPattern = "(?:\\b(?:một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười|không|trăm|nghìn|triệu|tỷ|lẻ|mốt|tư|lăm|phẩy)\\b\\s*)+"
-            
-            if unit.count == 1 {
-                pattern1 = "(\\d+)\\s*\(escapedUnit)(?!\\s*[a-zA-Zà-ỹ])(?=\\s*[^a-zA-Zà-ỹ]|$)"
-                pattern2 = "(\(numberSpelledPattern))\\s*\\b\(escapedUnit)\\b(?!\\s*[a-zA-Zà-ỹ])(?=\\s*[^a-zA-Zà-ỹ]|$)"
-            } else {
-                pattern1 = "(\\d+)\\s*\(escapedUnit)(?=\\s|[^\\w]|$)"
-                pattern2 = "(\(numberSpelledPattern))\\s*\\b\(escapedUnit)\\b(?=\\s|[^\\w]|$)"
-            }
-            
-            e = replaceMatches(in: e, pattern: pattern1, options: [.caseInsensitive]) { match, ns in
+        for spec in unitPatternSpecs {
+            let expansion = spec.expansion
+
+            e = replaceMatches(in: e, regex: spec.numericRegex) { match, ns in
                 let val = ns.substring(with: match.range(at: 1))
                 return val + " " + expansion
             }
-            
-            e = replaceMatches(in: e, pattern: pattern2, options: [.caseInsensitive]) { match, ns in
+
+            e = replaceMatches(in: e, regex: spec.spelledRegex) { match, ns in
                 let start = match.range.location
                 let length = match.range.length
-                
+
                 let prevIndex = start - 1
                 let nextIndex = start + length
-                
-                let wordCharRegex = try! NSRegularExpression(pattern: "[a-zA-Zà-ỹ]", options: [])
-                
+
                 if prevIndex >= 0 {
                     let prevChar = ns.substring(with: NSRange(location: prevIndex, length: 1))
-                    if wordCharRegex.firstMatch(in: prevChar, options: [], range: NSRange(location: 0, length: 1)) != nil {
+                    if PreprocessorRegex.wordChar.firstMatch(in: prevChar, options: [], range: NSRange(location: 0, length: 1)) != nil {
                         return nil
                     }
                 }
                 if nextIndex < ns.length {
                     let nextChar = ns.substring(with: NSRange(location: nextIndex, length: 1))
-                    if wordCharRegex.firstMatch(in: nextChar, options: [], range: NSRange(location: 0, length: 1)) != nil {
+                    if PreprocessorRegex.wordChar.firstMatch(in: nextChar, options: [], range: NSRange(location: 0, length: 1)) != nil {
                         return nil
                     }
                 }
-                
+
                 let spelled = ns.substring(with: match.range(at: 1))
                 return spelled.trimmingCharacters(in: .whitespacesAndNewlines) + " " + expansion
             }
@@ -1587,68 +1743,73 @@ final actor TextPreprocessor {
     }
 
     private static func processDigits(_ text: String) -> String {
-        return replaceMatches(in: text, pattern: "\\b\\d+\\b") { match, ns in
+
+        return replaceMatches(in: text, regex: PreprocessorRegex.digits) { match, ns in
             let n = ns.substring(with: match.range)
             return VietnameseNumberSpeller.spell(n)
         }
     }
-    
-    private static func processVietnameseText(_ text: String, unlimitedRoman: Bool = false) -> String {
-        appLog("📝 [Vietnamese Normalizer] Starting preprocess for text: '\(text)'")
-        var e = text
-        
-        appLog("   - Running precomposedStringWithCanonicalMapping")
-        e = text.precomposedStringWithCanonicalMapping
-        
-        appLog("   - Running cleanText")
-        e = cleanText(e)
-        
-        appLog("   - Running normalizeQuotesAndDashes")
-        e = normalizeQuotesAndDashes(e)
-        
-        appLog("   - Running formatNumbers")
-        e = formatNumbers(e)
-        
-        appLog("   - Running processUnitsRangeAndRatio")
-        e = processUnitsRangeAndRatio(e)
-        
-        appLog("   - Running processYearRanges")
-        e = processYearRanges(e)
-        
-        appLog("   - Running processDates")
-        e = processDates(e)
-        
-        appLog("   - Running processTime")
-        e = processTime(e)
-        
-        appLog("   - Running processRomanNumerals")
-        e = processRomanNumerals(e, unlimited: unlimitedRoman)
-        
 
-        
-        appLog("   - Running processCurrency")
+    private static func processVietnameseText(_ text: String, config: PreprocessorRuntimeConfig, unlimitedRoman: Bool = false) -> String {
+        Self.preprocessLog("📝 [Vietnamese Normalizer] Starting preprocess for text: '\(text)'")
+        var e = text
+
+        Self.preprocessLog("   - Running precomposedStringWithCanonicalMapping")
+        e = text.precomposedStringWithCanonicalMapping
+
+        Self.preprocessLog("   - Running cleanText")
+        e = cleanText(e)
+
+        Self.preprocessLog("   - Running normalizeQuotesAndDashes")
+        e = normalizeQuotesAndDashes(e)
+
+        if config.numericNormalizationEnabled {
+        Self.preprocessLog("   - Running formatNumbers")
+        e = formatNumbers(e)
+
+        Self.preprocessLog("   - Running processUnitsRangeAndRatio")
+        e = processUnitsRangeAndRatio(e)
+
+        Self.preprocessLog("   - Running processYearRanges")
+        e = processYearRanges(e)
+
+        Self.preprocessLog("   - Running processDates")
+        e = processDates(e)
+
+        Self.preprocessLog("   - Running processTime")
+        e = processTime(e)
+
+        Self.preprocessLog("   - Running processRomanNumerals")
+        e = processRomanNumerals(e, unlimited: unlimitedRoman)
+
+
+
+        Self.preprocessLog("   - Running processCurrency")
         e = processCurrency(e)
-        
-        appLog("   - Running processPercentages")
+
+        Self.preprocessLog("   - Running processPercentages")
         e = processPercentages(e)
-        
-        appLog("   - Running processPhoneNumbers")
+
+        Self.preprocessLog("   - Running processPhoneNumbers")
         e = processPhoneNumbers(e)
-        
-        appLog("   - Running processDecimals")
+
+        Self.preprocessLog("   - Running processDecimals")
         e = processDecimals(e)
-        
-        appLog("   - Running processUnits")
+
+        Self.preprocessLog("   - Running processUnits")
         e = processUnits(e)
-        
-        appLog("   - Running processDigits")
+
+        Self.preprocessLog("   - Running processDigits")
         e = processDigits(e)
-        
-        appLog("   - Trimming and cleaning white spaces")
-        e = e.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        } else {
+            Self.preprocessLog("   - Numeric normalization disabled; skipping number/date/time/currency pipeline")
+        }
+
+        Self.preprocessLog("   - Trimming and cleaning white spaces")
+        e = PreprocessorRegex.whitespaceCollapse.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: " ")
         e = e.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        appLog("📝 [Vietnamese Normalizer] Finished. Output: '\(e)'")
+
+        Self.preprocessLog("📝 [Vietnamese Normalizer] Finished. Output: '\(e)'")
         return e
     }
 
@@ -1657,53 +1818,57 @@ final actor TextPreprocessor {
         case word
     }
 
-    private func replaceDictionaryWords(in text: String, type: DictionaryType) -> String {
+    private func replaceDictionaryWords(in text: String, type: DictionaryType, config: PreprocessorRuntimeConfig) -> String {
         let typeStr = type == .acronym ? "acronym" : "word"
-        appLog("📖 [ReplaceDictionary] Type: \(typeStr), Input: '\(text)'")
+        guard config.dictionaryReplacementEnabled else {
+            Self.preprocessLog("📖 [ReplaceDictionary] Type: \(typeStr), dictionary replacement disabled; skipping.")
+            return text
+        }
+        Self.preprocessLog("📖 [ReplaceDictionary] Type: \(typeStr), Input: '\(text)'")
         // Tìm toàn bộ các token là từ (word tokens) trong văn bản
-        let wordPattern = "[a-zA-Z0-9_\u{00C0}-\u{1EFF}]+"
-        guard let regex = try? NSRegularExpression(pattern: wordPattern, options: []) else { return text }
-        
+        let regex = PreprocessorRegex.wordTokens
+
         let nsString = text as NSString
         let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsString.length))
         guard !matches.isEmpty else {
-            appLog("📖 [ReplaceDictionary] Type: \(typeStr), No word matches found.")
+            Self.preprocessLog("📖 [ReplaceDictionary] Type: \(typeStr), No word matches found.")
             return text
         }
-        
+
         struct WordToken {
             let text: String
             let range: NSRange
         }
-        
+
         let words = matches.map { WordToken(text: nsString.substring(with: $0.range).lowercased(), range: $0.range) }
-        
+
         var result = ""
         var lastCopiedIndex = 0
         var i = 0
-        
+
         while i < words.count {
             var matchedLength = 0
             var replacement: String? = nil
             var matchStartLoc = 0
             var matchEndLoc = 0
-            
+
             // Tìm kiếm tham lam (greedy matching): thử khớp cụm từ tối đa 4 từ giảm dần về 1 từ
             for lookAhead in (1...4).reversed() {
                 guard i + lookAhead <= words.count else { continue }
-                
+
                 let startLoc = words[i].range.location
                 let lastWord = words[i + lookAhead - 1]
                 let endLoc = lastWord.range.location + lastWord.range.length
-                
+
                 // Lấy cụm từ gốc từ văn bản ban đầu và chuẩn hóa khoảng trắng để đối chiếu
                 let rawPhrase = nsString.substring(with: NSRange(location: startLoc, length: endLoc - startLoc)).lowercased()
-                let phrase = rawPhrase.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-                                      .trimmingCharacters(in: .whitespacesAndNewlines)
-                
+                let phrase = PreprocessorRegex.whitespaceCollapse
+                    .stringByReplacingMatches(in: rawPhrase, options: [], range: NSRange(location: 0, length: rawPhrase.utf16.count), withTemplate: " ")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
                 // Tra cứu trực tiếp từ bộ nhớ của actor
                 let matchedValue = (type == .acronym) ? acronymMap[phrase] : wordMap[phrase]
-                    
+
                 if let match = matchedValue {
                     matchedLength = lookAhead
                     replacement = match
@@ -1712,166 +1877,186 @@ final actor TextPreprocessor {
                     break
                 }
             }
-            
+
             if let match = replacement, matchedLength > 0 {
                 // Sao chép đoạn văn bản không thay đổi từ lastCopiedIndex đến matchStartLoc
                 if matchStartLoc > lastCopiedIndex {
                     result += nsString.substring(with: NSRange(location: lastCopiedIndex, length: matchStartLoc - lastCopiedIndex))
                 }
-                
+
                 let replacementText = (type == .word) ? "\u{FEFF}\(match)\u{FEFF}" : match
                 result += replacementText
-                
-                appLog("   - Replaced phrase '\(nsString.substring(with: NSRange(location: matchStartLoc, length: matchEndLoc - matchStartLoc)))' with '\(replacementText)'")
-                
+
+                Self.preprocessLog("   - Replaced phrase '\(nsString.substring(with: NSRange(location: matchStartLoc, length: matchEndLoc - matchStartLoc)))' with '\(replacementText)'")
+
                 lastCopiedIndex = matchEndLoc
                 i += matchedLength
             } else {
                 i += 1
             }
         }
-        
+
         // Sao chép đoạn văn bản còn lại từ lastCopiedIndex đến cuối
         if lastCopiedIndex < nsString.length {
             result += nsString.substring(with: NSRange(location: lastCopiedIndex, length: nsString.length - lastCopiedIndex))
         }
-        
-        appLog("📖 [ReplaceDictionary] Type: \(typeStr), Output: '\(result)'")
+
+        Self.preprocessLog("📖 [ReplaceDictionary] Type: \(typeStr), Output: '\(result)'")
         return result
     }
 
-    private static let tokenRegex = try! NSRegularExpression(
-        pattern: "[a-zA-Z0-9_\u{00C0}-\u{1EFF}]+(?:[-.][a-zA-Z0-9_\u{00C0}-\u{1EFF}]+)*",
-        options: []
-    )
+    private func transliterateToken(_ token: String, config: PreprocessorRuntimeConfig) -> String {
+        guard config.transliterationEnabled else { return token }
+
+        let folded = token.folding(options: .diacriticInsensitive, locale: nil)
+        let cacheKey = folded.lowercased()
+
+        if let cached = transliterationCache[cacheKey] {
+            return cached
+        }
+
+        let transliterated: String
+        if config.dictionaryReplacementEnabled, let dictMatch = lookupWord(cacheKey) {
+            transliterated = dictMatch
+        } else if JapaneseTransliterator.isJapaneseRomaji(cacheKey) {
+            transliterated = JapaneseTransliterator.transliterateRomaji(cacheKey)
+        } else if cacheKey.contains("-") || cacheKey.contains(".") {
+            var partsResult = ""
+            var currentPart = ""
+            for char in cacheKey {
+                if char == "-" || char == "." {
+                    if !currentPart.isEmpty {
+                        if !VietnameseWordChecker.isVietnameseWord(currentPart) {
+                            if JapaneseTransliterator.isJapaneseRomaji(currentPart) {
+                                partsResult += JapaneseTransliterator.transliterateRomaji(currentPart)
+                            } else {
+                                partsResult += EnglishTransliterator.transliterateWord(currentPart)
+                            }
+                        } else {
+                            partsResult += currentPart
+                        }
+                        currentPart = ""
+                    }
+                    partsResult.append(char)
+                } else {
+                    currentPart.append(char)
+                }
+            }
+            if !currentPart.isEmpty {
+                if !VietnameseWordChecker.isVietnameseWord(currentPart) {
+                    if JapaneseTransliterator.isJapaneseRomaji(currentPart) {
+                        partsResult += JapaneseTransliterator.transliterateRomaji(currentPart)
+                    } else {
+                        partsResult += EnglishTransliterator.transliterateWord(currentPart)
+                    }
+                } else {
+                    partsResult += currentPart
+                }
+            }
+            transliterated = partsResult
+        } else {
+            transliterated = EnglishTransliterator.transliterateWord(cacheKey)
+        }
+
+        storeTransliteration(transliterated, for: cacheKey)
+        return transliterated
+    }
 
     // MARK: - Main Preprocess Pipeline
     func preprocess(_ text: String) -> String {
-        appLog("🚀 [Preprocess] Start preprocessing for: '\(text)'")
+        Self.preprocessLog("🚀 [Preprocess] Start preprocessing for: '\(text)'")
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            appLog("🚀 [Preprocess] Text is empty, returning empty string.")
+            Self.preprocessLog("🚀 [Preprocess] Text is empty, returning empty string.")
             return ""
         }
-        
+
+        let runtimeConfig = PreprocessorRuntimeConfig.load()
+        Self.preprocessLog(
+            "🚀 [Preprocess] Config snapshot: numeric=\(runtimeConfig.numericNormalizationEnabled), dictionary=\(runtimeConfig.dictionaryReplacementEnabled), transliteration=\(runtimeConfig.transliterationEnabled)"
+        )
+
         // 0. Chuyển đổi Hiragana/Katakana tiếng Nhật sang Romaji
-        appLog("🚀 [Preprocess] Step 0a: Converting Japanese characters (Romaji)...")
-        let romajiText = JapaneseTransliterator.convertToRomaji(text)
-        
-        appLog("🚀 [Preprocess] Step 0b: Running Vietnamese text processor...")
-        let processedVi = Self.processVietnameseText(romajiText)
-        
-        appLog("🚀 [Preprocess] Step 0c: Cleaning emojis and symbols...")
+        let pipelineInput: String
+        if runtimeConfig.transliterationEnabled {
+            Self.preprocessLog("🚀 [Preprocess] Step 0a: Converting Japanese characters (Romaji)...")
+            pipelineInput = JapaneseTransliterator.convertToRomaji(text)
+        } else {
+            Self.preprocessLog("🚀 [Preprocess] Step 0a: Transliteration disabled; keeping original script.")
+            pipelineInput = text
+        }
+
+        Self.preprocessLog("🚀 [Preprocess] Step 0b: Running Vietnamese text processor...")
+        let processedVi = Self.processVietnameseText(pipelineInput, config: runtimeConfig)
+
+        Self.preprocessLog("🚀 [Preprocess] Step 0c: Cleaning emojis and symbols...")
         let cleaned = Self.cleanEmojisAndSymbols(processedVi)
-        
+
         let lowercased = cleaned.lowercased()
-        
-        // 1. Thay thế từ viết tắt (Acronyms) luôn luôn chạy
-        appLog("🚀 [Preprocess] Step 1: Replacing acronyms...")
-        var replacedText = replaceDictionaryWords(in: lowercased, type: .acronym)
-        
-        // 2. Tiến hành khớp từ điển tiếng Anh và chạy bộ quy tắc
-        appLog("🚀 [Preprocess] Step 2: Translating English words...")
-        replacedText = replaceDictionaryWords(in: replacedText, type: .word)
-        
-        let nsString = replacedText as NSString
-        let matches = Self.tokenRegex.matches(in: replacedText, options: [], range: NSRange(location: 0, length: nsString.length))
-        
-        var result = ""
-        var lastOffset = 0
-        
-        appLog("🚀 [Preprocess] Step 2b: Processing individual non-Vietnamese tokens...")
-        for match in matches {
-            if match.range.location > lastOffset {
-                let gapRange = NSRange(location: lastOffset, length: match.range.location - lastOffset)
+
+        // 1. Thay thế từ viết tắt (Acronyms) khi config bật
+        var replacedText = lowercased
+        if runtimeConfig.dictionaryReplacementEnabled {
+            Self.preprocessLog("🚀 [Preprocess] Step 1: Replacing acronyms...")
+            replacedText = replaceDictionaryWords(in: lowercased, type: .acronym, config: runtimeConfig)
+
+            // 2. Tiến hành khớp từ điển tiếng Anh và chạy bộ quy tắc
+            Self.preprocessLog("🚀 [Preprocess] Step 2: Translating English words...")
+            replacedText = replaceDictionaryWords(in: replacedText, type: .word, config: runtimeConfig)
+        } else {
+            Self.preprocessLog("🚀 [Preprocess] Step 1/2: Dictionary replacement disabled; skipping acronym and word maps.")
+        }
+
+        let shouldProcessTokens = runtimeConfig.dictionaryReplacementEnabled || runtimeConfig.transliterationEnabled
+
+        var result = replacedText
+        if shouldProcessTokens {
+            let nsString = replacedText as NSString
+            let matches = PreprocessorRegex.token.matches(in: replacedText, options: [], range: NSRange(location: 0, length: nsString.length))
+
+            result = ""
+            var lastOffset = 0
+
+            Self.preprocessLog("🚀 [Preprocess] Step 2b: Processing individual non-Vietnamese tokens...")
+            for match in matches {
+                if match.range.location > lastOffset {
+                    let gapRange = NSRange(location: lastOffset, length: match.range.location - lastOffset)
+                    result += nsString.substring(with: gapRange)
+                }
+
+                let token = nsString.substring(with: match.range)
+
+                // Kiểm tra xem token này có phải đã được xử lý bởi từ điển (Sentinel check) hay không
+                var isTranslatedByDict = false
+                if match.range.location > 0 {
+                    let prevCharRange = NSRange(location: match.range.location - 1, length: 1)
+                    if nsString.substring(with: prevCharRange) == "\u{FEFF}" {
+                        isTranslatedByDict = true
+                    }
+                }
+
+                let processedToken: String
+                if isTranslatedByDict {
+                    processedToken = token
+                } else if runtimeConfig.transliterationEnabled && token.count > 1 && token != "mc" && !VietnameseWordChecker.isVietnameseWord(token) {
+                    // Tự động chuẩn hóa dấu phụ (ví dụ: ryū -> ryu, arigatō -> arigato)
+                    processedToken = transliterateToken(token, config: runtimeConfig)
+                } else {
+                    processedToken = token
+                }
+
+                result += processedToken
+                lastOffset = match.range.location + match.range.length
+            }
+
+            if lastOffset < nsString.length {
+                let gapRange = NSRange(location: lastOffset, length: nsString.length - lastOffset)
                 result += nsString.substring(with: gapRange)
             }
-            
-            let token = nsString.substring(with: match.range)
-            
-            // Kiểm tra xem token này có phải đã được xử lý bởi từ điển (Sentinel check) hay không
-            var isTranslatedByDict = false
-            if match.range.location > 0 {
-                let prevCharRange = NSRange(location: match.range.location - 1, length: 1)
-                if nsString.substring(with: prevCharRange) == "\u{FEFF}" {
-                    isTranslatedByDict = true
-                }
-            }
-            
-            let processedToken: String
-            if isTranslatedByDict {
-                processedToken = token
-            } else if token.count > 1 && token != "mc" && !VietnameseWordChecker.isVietnameseWord(token) {
-                // Check cache first
-                if let cached = transliterationCache[token] {
-                    processedToken = cached
-                } else {
-                    // Tự động chuẩn hóa dấu phụ (ví dụ: ryū -> ryu, arigatō -> arigato)
-                    let folded = token.folding(options: .diacriticInsensitive, locale: nil)
-                    
-                    let transliterated: String
-                    if let dictMatch = lookupWord(folded) {
-                        transliterated = dictMatch
-                    } else if JapaneseTransliterator.isJapaneseRomaji(folded) {
-                        transliterated = JapaneseTransliterator.transliterateRomaji(folded)
-                    } else {
-                        if folded.contains("-") || folded.contains(".") {
-                            var partsResult = ""
-                            var currentPart = ""
-                            for char in folded {
-                                if char == "-" || char == "." {
-                                    if !currentPart.isEmpty {
-                                        if !VietnameseWordChecker.isVietnameseWord(currentPart) {
-                                            if JapaneseTransliterator.isJapaneseRomaji(currentPart) {
-                                                partsResult += JapaneseTransliterator.transliterateRomaji(currentPart)
-                                            } else {
-                                                partsResult += EnglishTransliterator.transliterateWord(currentPart)
-                                            }
-                                        } else {
-                                            partsResult += currentPart
-                                        }
-                                        currentPart = ""
-                                    }
-                                    partsResult.append(char)
-                                } else {
-                                    currentPart.append(char)
-                                }
-                            }
-                            if !currentPart.isEmpty {
-                                if !VietnameseWordChecker.isVietnameseWord(currentPart) {
-                                    if JapaneseTransliterator.isJapaneseRomaji(currentPart) {
-                                        partsResult += JapaneseTransliterator.transliterateRomaji(currentPart)
-                                    } else {
-                                        partsResult += EnglishTransliterator.transliterateWord(currentPart)
-                                    }
-                                } else {
-                                    partsResult += currentPart
-                                }
-                            }
-                            transliterated = partsResult
-                        } else {
-                            transliterated = EnglishTransliterator.transliterateWord(folded)
-                        }
-                    }
-                    // Cache the result
-                    transliterationCache[token] = transliterated
-                    processedToken = transliterated
-                }
-            } else {
-                processedToken = token
-            }
-            
-            result += processedToken
-            lastOffset = match.range.location + match.range.length
         }
-        
-        if lastOffset < nsString.length {
-            let gapRange = NSRange(location: lastOffset, length: nsString.length - lastOffset)
-            result += nsString.substring(with: gapRange)
-        }
-        
+
         // Loại bỏ sentinel trước khi trả về kết quả
         let cleanedResult = result.replacingOccurrences(of: "\u{FEFF}", with: "")
-        appLog("🚀 [Preprocess] Finish preprocessing. Output: '\(cleanedResult)'")
+        Self.preprocessLog("🚀 [Preprocess] Finish preprocessing. Output: '\(cleanedResult)'")
         return cleanedResult
     }
 }
