@@ -80,10 +80,29 @@ final class NghiTTSClient {
     }
 
     func getAllVoices(forceRefresh: Bool = false) async throws -> [Voice] {
-        let remoteVoices = try await fetchVietnameseVoices(forceRefresh: forceRefresh)
-        let localVoiceIds = modelStore.getLocalVoiceIDs()
-        var allVoices = remoteVoices
+        let allowedNames = ["Ngọc Huyền (mới)", "Mai Phương", "Duy Onyx (mới)", "Ngọc Ngạn"].map { $0.precomposedStringWithCanonicalMapping }
+        var filteredVoices: [Voice] = []
         
+        for voice in Self.fallbackVietnameseVoices {
+            let normalizedName = voice.name.precomposedStringWithCanonicalMapping
+            if allowedNames.contains(normalizedName) {
+                filteredVoices.append(voice)
+            }
+        }
+        
+        let localVoiceIds = modelStore.getLocalVoiceIDs()
+        for voiceId in localVoiceIds {
+            if !filteredVoices.contains(where: { $0.id == voiceId }) {
+                let displayName = voiceId.replacingOccurrences(of: "_", with: " ").capitalized
+                filteredVoices.append(Voice(id: voiceId, name: displayName))
+            }
+        }
+        return filteredVoices
+    }
+
+    func getModelList() -> [Voice] {
+        var allVoices = Self.fallbackVietnameseVoices
+        let localVoiceIds = modelStore.getLocalVoiceIDs()
         for voiceId in localVoiceIds {
             if !allVoices.contains(where: { $0.id == voiceId }) {
                 let displayName = voiceId.replacingOccurrences(of: "_", with: " ").capitalized

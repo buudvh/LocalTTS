@@ -2,13 +2,21 @@ import SwiftUI
 import AVFoundation
 import UniformTypeIdentifiers
 
+enum TabType: Hashable {
+    case tts
+    case model
+    case dictionary
+    case system
+}
+
+@MainActor
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     @State private var voices: [Voice] = []
     @State private var isLoadingVoices = false
     @State private var selectedVoice = NghiTTSClient.defaultVietnameseVoice
     @State private var prefetchStatus = ""
-    @State private var isShowingLogs = false
+    @State private var isShowingSettings = false
     @State private var testText = "Xin chào, đây là thử giọng tiếng Việt."
     @State private var testSpeed = 1.0
     @State private var isSynthesizing = false
@@ -22,18 +30,40 @@ struct ContentView: View {
     @State private var downloadProgressValue: Double = 0.0
     @State private var downloadMessage = ""
     
-    @AppStorage(PreprocessorSettingKey.numericNormalizationEnabled) private var preprocessorNumericNormalizationEnabled = true
-    @AppStorage(PreprocessorSettingKey.dictionaryReplacementEnabled) private var preprocessorDictionaryReplacementEnabled = true
-    @AppStorage(PreprocessorSettingKey.transliterationEnabled) private var preprocessorTransliterationEnabled = true
-    @AppStorage(PreprocessorSettingKey.debugLoggingEnabled) private var preprocessorDebugLoggingEnabled = false
-    @AppStorage("newlinePauseDuration") private var newlinePause = 0.5
-    @AppStorage("sentencePauseDuration") private var sentencePause = 0.4
-    @AppStorage("phrasePauseDuration") private var phrasePause = 0.15
-    @AppStorage("bracketPauseDuration") private var bracketPause = 0.15
+    // Tab navigation and refresh trigger
+    @State private var activeTab: TabType = .tts
+    @State private var modelRefreshTrigger = 0
+    
+    // Progress variables for model downloading in Model tab
+    @State private var downloadingStatus: [String: Double] = [:]
+    @State private var downloadingMessages: [String: String] = [:]
+
+    // Voice categorization helpers
+    private var topVoices: [Voice] {
+        let topNames = ["Ngọc Huyền (mới)", "Mai Phương", "Duy Onyx (mới)", "Ngọc Ngạn"].map { $0.precomposedStringWithCanonicalMapping }
+        return NghiTTSClient.fallbackVietnameseVoices.filter { topNames.contains($0.name.precomposedStringWithCanonicalMapping) }
+    }
+
+    private var systemVoices: [Voice] {
+        let topNames = ["Ngọc Huyền (mới)", "Mai Phương", "Duy Onyx (mới)", "Ngọc Ngạn"].map { $0.precomposedStringWithCanonicalMapping }
+        return NghiTTSClient.fallbackVietnameseVoices.filter { !topNames.contains($0.name.precomposedStringWithCanonicalMapping) }
+    }
+
+    private var customVoices: [Voice] {
+        let _ = modelRefreshTrigger
+        let localIDs = appState.modelStore.getLocalVoiceIDs()
+        let fallbackIDs = NghiTTSClient.fallbackVietnameseVoices.map { $0.id }
+        let customIDs = localIDs.filter { !fallbackIDs.contains($0) }
+        return customIDs.map { id in
+            let name = id.replacingOccurrences(of: "_", with: " ").capitalized
+            return Voice(id: id, name: name)
+        }
+    }
 
     var body: some View {
         NavigationStack {
-            TabView {
+            TabView(selection: $activeTab) {
+                // Tab 1: TTS
                 Form {
                     Section("NghiTTS Voices") {
                         if isLoadingVoices {
@@ -50,22 +80,10 @@ struct ContentView: View {
                             Task { await loadVoices(forceRefresh: true) }
                         }
 
-                        Button("Nhập Model Ngoài...") {
-                            isShowingFileImporter = true
-                        }
-
                         Button("Prefetch Selected Model") {
                             Task { await prefetchSelectedVoice() }
                         }
                         .disabled(isDownloadingModel || isLoadingVoices)
-
-                        let uncached = voices.filter { !appState.modelStore.modelExists(for: $0.id) }
-                        if !uncached.isEmpty {
-                            Button(isDownloadingModel ? "Đang tải các Model..." : "Tải tất cả các Model (\(uncached.count))") {
-                                Task { await downloadAllModels(uncached) }
-                            }
-                            .disabled(isDownloadingModel)
-                        }
 
                         if isDownloadingModel {
                             ProgressView(value: downloadProgressValue) {
@@ -116,42 +134,143 @@ struct ContentView: View {
                         }
                         .disabled(isSynthesizing || testText.trimmed.isEmpty)
                     }
-
-                    Section("Cấu hình khoảng ngắt (giây)") {
-                        PrecisionSliderView(title: "Xuống dòng:", value: $newlinePause, defaultValue: 0.5)
-                        PrecisionSliderView(title: "Cuối câu (. ! ?):", value: $sentencePause, defaultValue: 0.4)
-                        PrecisionSliderView(title: "Giữa câu (, ; :):", value: $phrasePause, defaultValue: 0.15)
-                        PrecisionSliderView(title: "Dấu ngoặc (( ) [ ] { } 「 」 etc.):", value: $bracketPause, defaultValue: 0.15)
-                        
-                        Button("Đặt lại mặc định") {
-                            newlinePause = 0.5
-                            sentencePause = 0.4
-                            phrasePause = 0.15
-                            bracketPause = 0.15
-                        }
-                        .foregroundStyle(.red)
-                    }
                 }
                 .tabItem {
                     Label("TTS", systemImage: "waveform.and.mic")
                 }
+                .tag(TabType.tts)
                 
-                Form {
-                    Section("Preprocess") {
-                        Toggle("Normalize numbers", isOn: $preprocessorNumericNormalizationEnabled)
-                        Toggle("Replace dictionary words", isOn: $preprocessorDictionaryReplacementEnabled)
-                        NavigationLink("Sửa từ điển ngoại lệ (EN/JP)") {
-                            DictionaryEditView()
+                // Tab 2: Model (Quản lý Model)
+                List {
+                    Section {
+                        Button(action: {
+                            isShowingFileImporter = true
+                        }) {
+                            Label("Nhập Model Ngoài...", systemImage: "square.and.arrow.down")
                         }
-                        Toggle("Transliterate EN/JP", isOn: $preprocessorTransliterationEnabled)
-                        Toggle("Debug preprocess logs", isOn: $preprocessorDebugLoggingEnabled)
+                    }
+                    
+                    Section(header: HStack {
+                        Text("Giọng đọc đặc sắc")
+                        Spacer()
+                        HStack(spacing: 12) {
+                            Button("Tải tất cả") {
+                                downloadAll(in: topVoices)
+                            }
+                            .buttonStyle(.borderless)
+                            .textCase(.none)
+                            .font(.caption)
+                            
+                            Button("Xóa tất cả", role: .destructive) {
+                                deleteAll(in: topVoices)
+                            }
+                            .buttonStyle(.borderless)
+                            .textCase(.none)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                        }
+                    }) {
+                        ForEach(topVoices) { voice in
+                            modelRow(for: voice)
+                        }
+                    }
+                    
+                    Section(header: HStack {
+                        Text("Giọng đọc hệ thống")
+                        Spacer()
+                        HStack(spacing: 12) {
+                            Button("Tải tất cả") {
+                                downloadAll(in: systemVoices)
+                            }
+                            .buttonStyle(.borderless)
+                            .textCase(.none)
+                            .font(.caption)
+                            
+                            Button("Xóa tất cả", role: .destructive) {
+                                deleteAll(in: systemVoices)
+                            }
+                            .buttonStyle(.borderless)
+                            .textCase(.none)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                        }
+                    }) {
+                        ForEach(systemVoices) { voice in
+                            modelRow(for: voice)
+                        }
+                    }
+                    
+                    let custom = customVoices
+                    if !custom.isEmpty {
+                        Section(header: HStack {
+                            Text("Giọng đọc tùy chỉnh")
+                            Spacer()
+                            Button("Xóa tất cả", role: .destructive) {
+                                deleteAll(in: custom)
+                            }
+                            .buttonStyle(.borderless)
+                            .textCase(.none)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                        }) {
+                            ForEach(custom) { voice in
+                                modelRow(for: voice, isCustom: true)
+                            }
+                        }
                     }
                 }
                 .tabItem {
-                    Label("Từ điển", systemImage: "character.book.closed")
+                    Label("Model", systemImage: "arrow.down.circle")
                 }
+                .tag(TabType.model)
+
+                // Tab 3: Từ điển (Màn hình Xóa/Sửa từ trực tiếp)
+                DictionaryEditView()
+                    .tabItem {
+                        Label("Từ điển", systemImage: "character.book.closed")
+                    }
+                    .tag(TabType.dictionary)
                 
+                // Tab 4: Hệ thống
                 Form {
+                    let hasNoModels = appState.modelStore.getLocalVoiceIDs().isEmpty
+                    let hasNoDictionary = !FileManager.default.fileExists(atPath: appState.modelStore.rootURL.appendingPathComponent("non-vietnamese-words.plist").path) || !FileManager.default.fileExists(atPath: appState.modelStore.rootURL.appendingPathComponent("acronyms.plist").path)
+
+                    if hasNoModels || hasNoDictionary {
+                        Section("Cảnh báo hệ thống") {
+                            if hasNoModels {
+                                HStack {
+                                    Label("Chưa tải model nào", systemImage: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.orange)
+                                    Spacer()
+                                    Button("Thực hiện") {
+                                        activeTab = .model
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                            if hasNoDictionary {
+                                HStack {
+                                    Label("Chưa tải từ điển", systemImage: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.orange)
+                                    Spacer()
+                                    Button("Thực hiện") {
+                                        activeTab = .dictionary
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                        }
+                    }
+
+                    Section("Cấu hình") {
+                        Button(action: {
+                            isShowingSettings = true
+                        }) {
+                            Label("Cài đặt", systemImage: "gearshape")
+                        }
+                    }
+
                     Section("Server") {
                         HStack {
                             Text(appState.server.isRunning ? "Running" : "Stopped")
@@ -188,7 +307,7 @@ struct ContentView: View {
 
                     Section("Logs") {
                         Button("View Logs") {
-                            isShowingLogs = true
+                            shareLogFolder()
                         }
                     }
 
@@ -202,6 +321,7 @@ struct ContentView: View {
                 .tabItem {
                     Label("Hệ thống", systemImage: "server.rack")
                 }
+                .tag(TabType.system)
             }
             .scrollDismissesKeyboard(.immediately)
             .navigationTitle("LocalTTS")
@@ -209,8 +329,8 @@ struct ContentView: View {
                 appState.startServer()
                 await loadVoices(forceRefresh: false)
             }
-            .sheet(isPresented: $isShowingLogs) {
-                LogView()
+            .sheet(isPresented: $isShowingSettings) {
+                SettingsView()
             }
             .fileImporter(
                 isPresented: $isShowingFileImporter,
@@ -228,6 +348,152 @@ struct ContentView: View {
             }
         }
         .dismissKeyboardOnTap()
+    }
+
+    @ViewBuilder
+    private func modelRow(for voice: Voice, isCustom: Bool = false) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(voice.name)
+                    .font(.body)
+                
+                let isDownloaded = appState.modelStore.modelExists(for: voice.id)
+                if isDownloaded {
+                    let bytes = appState.modelStore.bytesForVoice(voice.id)
+                    Text(String(format: "Dung lượng: %.1f MB", Double(bytes) / 1024.0 / 1024.0))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("Trạng thái: Chưa tải")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                if let progress = downloadingStatus[voice.name] {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ProgressView(value: progress)
+                        Text(downloadingMessages[voice.name] ?? "Đang tải...")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 4)
+                }
+            }
+            
+            Spacer()
+            
+            let isDownloading = downloadingStatus[voice.name] != nil
+            if isDownloading {
+                ProgressView()
+            } else {
+                let isDownloaded = appState.modelStore.modelExists(for: voice.id)
+                HStack(spacing: 8) {
+                    if isDownloaded {
+                        if !isCustom {
+                            Button("Tải lại") {
+                                Task {
+                                    await downloadSingleModel(voice: voice)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        
+                        Button("Xóa", role: .destructive) {
+                            deleteSingleModel(voice: voice)
+                        }
+                        .buttonStyle(.bordered)
+                        .foregroundColor(.red)
+                    } else {
+                        Button("Tải") {
+                            Task {
+                                await downloadSingleModel(voice: voice)
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func downloadSingleModel(voice: Voice) async {
+        downloadingStatus[voice.name] = 0.0
+        downloadingMessages[voice.name] = "Bắt đầu tải..."
+        
+        do {
+            _ = try await appState.nghiClient.prefetchModels(voices: [voice.name]) { msg, progress in
+                DispatchQueue.main.async {
+                    self.downloadingStatus[voice.name] = progress
+                    self.downloadingMessages[voice.name] = msg
+                }
+            }
+            DispatchQueue.main.async {
+                self.downloadingStatus.removeValue(forKey: voice.name)
+                self.downloadingMessages.removeValue(forKey: voice.name)
+                self.modelRefreshTrigger += 1
+            }
+            await loadVoices(forceRefresh: false)
+        } catch {
+            DispatchQueue.main.async {
+                self.downloadingStatus.removeValue(forKey: voice.name)
+                self.downloadingMessages.removeValue(forKey: voice.name)
+                self.appState.lastError = "Lỗi tải model \(voice.name): \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func deleteSingleModel(voice: Voice) {
+        do {
+            try appState.modelStore.deleteModel(for: voice.id)
+            modelRefreshTrigger += 1
+            Task {
+                await loadVoices(forceRefresh: false)
+            }
+        } catch {
+            appState.lastError = "Lỗi xóa model \(voice.name): \(error.localizedDescription)"
+        }
+    }
+
+    private func shareLogFolder() {
+        let logFolderURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        #if canImport(UIKit)
+        let activityVC = UIActivityViewController(activityItems: [logFolderURL], applicationActivities: nil)
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootVC = windowScene.windows.first?.rootViewController {
+            if let popover = activityVC.popoverPresentationController {
+                popover.sourceView = rootVC.view
+                popover.sourceRect = CGRect(x: rootVC.view.bounds.midX, y: rootVC.view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
+            rootVC.present(activityVC, animated: true, completion: nil)
+        }
+        #endif
+    }
+
+    private func downloadAll(in list: [Voice]) {
+        let toDownload = list.filter { !appState.modelStore.modelExists(for: $0.id) && downloadingStatus[$0.name] == nil }
+        for voice in toDownload {
+            Task {
+                await downloadSingleModel(voice: voice)
+            }
+        }
+    }
+
+    private func deleteAll(in list: [Voice]) {
+        let toDelete = list.filter { appState.modelStore.modelExists(for: $0.id) }
+        guard !toDelete.isEmpty else { return }
+        for voice in toDelete {
+            do {
+                try appState.modelStore.deleteModel(for: voice.id)
+            } catch {
+                appState.lastError = "Lỗi xóa model \(voice.name): \(error.localizedDescription)"
+            }
+        }
+        modelRefreshTrigger += 1
+        Task {
+            await loadVoices(forceRefresh: false)
+        }
     }
 
     private func loadVoices(forceRefresh: Bool) async {
@@ -292,6 +558,7 @@ struct ContentView: View {
         }
         
         appLog("Imported \(importCount) files. Errors: \(errorCount)")
+        modelRefreshTrigger += 1
         await loadVoices(forceRefresh: false)
     }
 
@@ -310,29 +577,9 @@ struct ContentView: View {
                 }
             }
             prefetchStatus = result.first?.message ?? "Tải hoàn tất!"
+            modelRefreshTrigger += 1
         } catch {
             prefetchStatus = "Lỗi: \(error.localizedDescription)"
-        }
-    }
-
-    private func downloadAllModels(_ uncached: [Voice]) async {
-        isDownloadingModel = true
-        downloadProgressValue = 0.0
-        downloadMessage = "Bắt đầu tải..."
-        prefetchStatus = ""
-        defer { isDownloadingModel = false }
-        
-        let voiceNames = uncached.map { $0.name }
-        do {
-            _ = try await appState.nghiClient.prefetchModels(voices: voiceNames) { msg, progress in
-                DispatchQueue.main.async {
-                    self.downloadMessage = msg
-                    self.downloadProgressValue = progress
-                }
-            }
-            prefetchStatus = "Đã tải xong toàn bộ \(uncached.count) model!"
-        } catch {
-            prefetchStatus = "Lỗi tải hàng loạt: \(error.localizedDescription)"
         }
     }
 
@@ -360,60 +607,57 @@ struct ContentView: View {
     }
 }
 
-struct LogView: View {
+struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
-    @State private var logText = ""
-    @State private var timer: Timer? = nil
+    
+    @AppStorage(PreprocessorSettingKey.numericNormalizationEnabled) private var preprocessorNumericNormalizationEnabled = true
+    @AppStorage(PreprocessorSettingKey.dictionaryReplacementEnabled) private var preprocessorDictionaryReplacementEnabled = true
+    @AppStorage(PreprocessorSettingKey.transliterationEnabled) private var preprocessorTransliterationEnabled = true
+    @AppStorage(PreprocessorSettingKey.debugLoggingEnabled) private var preprocessorDebugLoggingEnabled = false
+    
+    @AppStorage("newlinePauseDuration") private var newlinePause = 0.5
+    @AppStorage("sentencePauseDuration") private var sentencePause = 0.4
+    @AppStorage("phrasePauseDuration") private var phrasePause = 0.15
+    @AppStorage("bracketPauseDuration") private var bracketPause = 0.15
 
     var body: some View {
         NavigationStack {
-            VStack {
-                ScrollView {
-                    Text(logText.isEmpty ? "No logs yet." : logText)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
+            Form {
+                Section("Preprocess") {
+                    Toggle("Normalize numbers", isOn: $preprocessorNumericNormalizationEnabled)
+                    Toggle("Replace dictionary words", isOn: $preprocessorDictionaryReplacementEnabled)
+                    Toggle("Transliterate EN/JP", isOn: $preprocessorTransliterationEnabled)
+                    Toggle("Debug preprocess logs", isOn: $preprocessorDebugLoggingEnabled)
                 }
                 
-                HStack {
-                    Button("Clear Logs", role: .destructive) {
-                        AppLogger.shared.clearLogs()
-                        logText = AppLogger.shared.getLogs()
-                    }
-                    .buttonStyle(.borderedProminent)
+                Section("Cấu hình khoảng ngắt (giây)") {
+                    PrecisionSliderView(title: "Xuống dòng:", value: $newlinePause, defaultValue: 0.5)
+                    PrecisionSliderView(title: "Cuối câu (. ! ?):", value: $sentencePause, defaultValue: 0.4)
+                    PrecisionSliderView(title: "Giữa câu (, ; :):", value: $phrasePause, defaultValue: 0.15)
+                    PrecisionSliderView(title: "Dấu ngoặc (( ) [ ] { } 「 」 etc.):", value: $bracketPause, defaultValue: 0.15)
                     
-                    Spacer()
-                    
-                    Button("Refresh") {
-                        logText = AppLogger.shared.getLogs()
+                    Button("Đặt lại mặc định") {
+                        newlinePause = 0.5
+                        sentencePause = 0.4
+                        phrasePause = 0.15
+                        bracketPause = 0.15
                     }
-                    .buttonStyle(.bordered)
+                    .foregroundStyle(.red)
                 }
-                .padding()
             }
-            .navigationTitle("Logs")
+            .navigationTitle("Cài đặt")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Close") {
+                    Button("Xong") {
                         dismiss()
                     }
                 }
             }
-            .onAppear {
-                logText = AppLogger.shared.getLogs()
-                // Auto-refresh every 2 seconds
-                timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-                    logText = AppLogger.shared.getLogs()
-                }
-            }
-            .onDisappear {
-                timer?.invalidate()
-                timer = nil
-            }
         }
     }
 }
+
 
 struct PrecisionSliderView: View {
     let title: String

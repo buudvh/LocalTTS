@@ -85,4 +85,16 @@ final class ModelStore {
         }
         return voiceIds
     }
+
+    func deleteModel(for voiceId: String) throws {
+        let onnxURL = modelURL(for: voiceId, extension: "onnx")
+        let jsonURL = modelURL(for: voiceId, extension: "onnx.json")
+        if fileManager.fileExists(atPath: onnxURL.path) {
+            try fileManager.removeItem(at: onnxURL)
+        }
+        if fileManager.fileExists(atPath: jsonURL.path) {
+            try fileManager.removeItem(at: jsonURL)
+        }
+    }
 }
+
