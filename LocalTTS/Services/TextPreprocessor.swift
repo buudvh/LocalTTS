@@ -65,7 +65,7 @@ private enum PreprocessorRegex {
     static let whitespaceBeforePeriod = try! NSRegularExpression(pattern: #"\s—"#, options: [])
     static let underscoreWord = try! NSRegularExpression(pattern: #"\b_\b"#, options: [])
     static let nonDigitDash = try! NSRegularExpression(pattern: #"(?<!\d)-(?!\d)"#, options: [])
-    static let allowedChars = try! NSRegularExpression(pattern: #"[^\u0000-\u{024F}\u{1E00}-\u{1EFF}\u{3040}-\u{30FF}]"#, options: [])
+    static let allowedChars = try! NSRegularExpression(pattern: #"[^\u0000-\u024F\u1E00-\u1EFF\u3040-\u30FF]"#, options: [])
     static let whitespaceCollapse = try! NSRegularExpression(pattern: #"\s+"#, options: [])
 
     static let thousandsSeparatedNumber = try! NSRegularExpression(pattern: #"(\d{1,3}(?:\.\d{3})+)(?=\s|$|[^\d.,])"#, options: [])
@@ -107,9 +107,9 @@ private enum PreprocessorRegex {
     static let decimal = try! NSRegularExpression(pattern: #"(\d+),(\d+)(?=\s|$|[^\d,])"#, options: [])
     static let digits = try! NSRegularExpression(pattern: #"\b\d+\b"#, options: [])
 
-    static let wordTokens = try! NSRegularExpression(pattern: #"[a-zA-Z0-9_\u{00C0}-\u{1EFF}]+"#, options: [])
+    static let wordTokens = try! NSRegularExpression(pattern: #"[a-zA-Z0-9_\u00C0-\u1EFF]+"#, options: [])
     static let wordChar = try! NSRegularExpression(pattern: #"[a-zA-Zà-ỹ]"#, options: [])
-    static let token = try! NSRegularExpression(pattern: #"[a-zA-Z0-9_\u{00C0}-\u{1EFF}]+(?:[-.][a-zA-Z0-9_\u{00C0}-\u{1EFF}]+)*"#, options: [])
+    static let token = try! NSRegularExpression(pattern: #"[a-zA-Z0-9_\u00C0-\u1EFF]+(?:[-.][a-zA-Z0-9_\u00C0-\u1EFF]+)*"#, options: [])
 
     static let asciiLettersOnly = try! NSRegularExpression(pattern: #"^[a-z]+$"#, options: [])
     static let romajiVowels = "aeiouyăâêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
@@ -1179,8 +1179,37 @@ final actor TextPreprocessor {
         // 1. Try loading from Application Support directory
         if let appSupport = try? fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
             let rootURL = appSupport.appendingPathComponent("LocalTTS", isDirectory: true)
+            try? fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
             let wordsURL = rootURL.appendingPathComponent("non-vietnamese-words.plist")
             let acronymsURL = rootURL.appendingPathComponent("acronyms.plist")
+
+            // Sync non-vietnamese-words.plist from Bundle if modified/different size
+            if let bundleWordsURL = Bundle.main.url(forResource: "non-vietnamese-words", withExtension: "plist") {
+                let bundleWordsAttr = try? fileManager.attributesOfItem(atPath: bundleWordsURL.path)
+                let bundleWordsSize = Int((bundleWordsAttr?[.size] as? UInt64) ?? 0)
+                let lastSyncedWordsSize = UserDefaults.standard.integer(forKey: "lastSyncedWordsSize")
+                let localExists = fileManager.fileExists(atPath: wordsURL.path)
+                
+                if !localExists || lastSyncedWordsSize != bundleWordsSize {
+                    try? fileManager.removeItem(at: wordsURL)
+                    try? fileManager.copyItem(at: bundleWordsURL, to: wordsURL)
+                    UserDefaults.standard.set(bundleWordsSize, forKey: "lastSyncedWordsSize")
+                }
+            }
+
+            // Sync acronyms.plist from Bundle if modified/different size
+            if let bundleAcronymsURL = Bundle.main.url(forResource: "acronyms", withExtension: "plist") {
+                let bundleAcronymsAttr = try? fileManager.attributesOfItem(atPath: bundleAcronymsURL.path)
+                let bundleAcronymsSize = Int((bundleAcronymsAttr?[.size] as? UInt64) ?? 0)
+                let lastSyncedAcronymsSize = UserDefaults.standard.integer(forKey: "lastSyncedAcronymsSize")
+                let localExists = fileManager.fileExists(atPath: acronymsURL.path)
+                
+                if !localExists || lastSyncedAcronymsSize != bundleAcronymsSize {
+                    try? fileManager.removeItem(at: acronymsURL)
+                    try? fileManager.copyItem(at: bundleAcronymsURL, to: acronymsURL)
+                    UserDefaults.standard.set(bundleAcronymsSize, forKey: "lastSyncedAcronymsSize")
+                }
+            }
 
             if fileManager.fileExists(atPath: wordsURL.path) {
                 wordMap = Self.loadPlist(from: wordsURL)

@@ -49,6 +49,18 @@ final class NghiTTSClient {
         var shouldCopy = false
         if !fm.fileExists(atPath: localAcronyms.path) || !fm.fileExists(atPath: localWords.path) || currentVersion != lastVersion {
             shouldCopy = true
+        } else {
+            if let bundleAcronymsURL = Bundle.main.url(forResource: "acronyms", withExtension: "plist"),
+               let bundleWordsURL = Bundle.main.url(forResource: "non-vietnamese-words", withExtension: "plist") {
+                let localAcronymsSize = (try? fm.attributesOfItem(atPath: localAcronyms.path)[.size] as? UInt64) ?? 0
+                let bundleAcronymsSize = (try? fm.attributesOfItem(atPath: bundleAcronymsURL.path)[.size] as? UInt64) ?? 0
+                let localWordsSize = (try? fm.attributesOfItem(atPath: localWords.path)[.size] as? UInt64) ?? 0
+                let bundleWordsSize = (try? fm.attributesOfItem(atPath: bundleWordsURL.path)[.size] as? UInt64) ?? 0
+                
+                if localAcronymsSize != bundleAcronymsSize || localWordsSize != bundleWordsSize {
+                    shouldCopy = true
+                }
+            }
         }
         
         if forceRefresh || shouldCopy {
@@ -114,11 +126,17 @@ final class NghiTTSClient {
             try fm.removeItem(at: localAcronyms)
         }
         try fm.copyItem(at: bundleAcronymsURL, to: localAcronyms)
+        if let attr = try? fm.attributesOfItem(atPath: bundleAcronymsURL.path), let size = attr[.size] as? UInt64 {
+            UserDefaults.standard.set(Int(size), forKey: "lastSyncedAcronymsSize")
+        }
         
         if fm.fileExists(atPath: localWords.path) {
             try fm.removeItem(at: localWords)
         }
         try fm.copyItem(at: bundleWordsURL, to: localWords)
+        if let attr = try? fm.attributesOfItem(atPath: bundleWordsURL.path), let size = attr[.size] as? UInt64 {
+            UserDefaults.standard.set(Int(size), forKey: "lastSyncedWordsSize")
+        }
         
         await TextPreprocessor.shared.loadResources()
     }
