@@ -61,9 +61,9 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            TabView(selection: $activeTab) {
-                // Tab 1: TTS
+        TabView(selection: $activeTab) {
+            // Tab 1: TTS
+            NavigationStack {
                 Form {
                     Section("NghiTTS Voices") {
                         if isLoadingVoices {
@@ -135,12 +135,15 @@ struct ContentView: View {
                         .disabled(isSynthesizing || testText.trimmed.isEmpty)
                     }
                 }
-                .tabItem {
-                    Label("TTS", systemImage: "waveform.and.mic")
-                }
-                .tag(TabType.tts)
-                
-                // Tab 2: Model (Quản lý Model)
+                .navigationTitle("LocalTTS")
+            }
+            .tabItem {
+                Label("TTS", systemImage: "waveform.and.mic")
+            }
+            .tag(TabType.tts)
+            
+            // Tab 2: Model (Quản lý Model)
+            NavigationStack {
                 List {
                     Section {
                         Button(action: {
@@ -219,19 +222,24 @@ struct ContentView: View {
                         }
                     }
                 }
-                .tabItem {
-                    Label("Model", systemImage: "arrow.down.circle")
-                }
-                .tag(TabType.model)
+                .navigationTitle("Quản lý Model")
+            }
+            .tabItem {
+                Label("Model", systemImage: "arrow.down.circle")
+            }
+            .tag(TabType.model)
 
-                // Tab 3: Từ điển (Màn hình Xóa/Sửa từ trực tiếp)
+            // Tab 3: Từ điển (Màn hình Xóa/Sửa từ trực tiếp)
+            NavigationStack {
                 DictionaryEditView()
-                    .tabItem {
-                        Label("Từ điển", systemImage: "character.book.closed")
-                    }
-                    .tag(TabType.dictionary)
-                
-                // Tab 4: Hệ thống
+            }
+            .tabItem {
+                Label("Từ điển", systemImage: "character.book.closed")
+            }
+            .tag(TabType.dictionary)
+            
+            // Tab 4: Hệ thống
+            NavigationStack {
                 Form {
                     let hasNoModels = appState.modelStore.getLocalVoiceIDs().isEmpty
                     let hasNoDictionary = !FileManager.default.fileExists(atPath: appState.modelStore.rootURL.appendingPathComponent("non-vietnamese-words.plist").path) || !FileManager.default.fileExists(atPath: appState.modelStore.rootURL.appendingPathComponent("acronyms.plist").path)
@@ -318,33 +326,33 @@ struct ContentView: View {
                         }
                     }
                 }
-                .tabItem {
-                    Label("Hệ thống", systemImage: "server.rack")
+                .navigationTitle("Hệ thống")
+            }
+            .tabItem {
+                Label("Hệ thống", systemImage: "server.rack")
+            }
+            .tag(TabType.system)
+        }
+        .scrollDismissesKeyboard(.immediately)
+        .task {
+            appState.startServer()
+            await loadVoices(forceRefresh: false)
+        }
+        .sheet(isPresented: $isShowingSettings) {
+            SettingsView()
+        }
+        .fileImporter(
+            isPresented: $isShowingFileImporter,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: true
+        ) { result in
+            switch result {
+            case .success(let urls):
+                Task {
+                    await importModels(from: urls)
                 }
-                .tag(TabType.system)
-            }
-            .scrollDismissesKeyboard(.immediately)
-            .navigationTitle("LocalTTS")
-            .task {
-                appState.startServer()
-                await loadVoices(forceRefresh: false)
-            }
-            .sheet(isPresented: $isShowingSettings) {
-                SettingsView()
-            }
-            .fileImporter(
-                isPresented: $isShowingFileImporter,
-                allowedContentTypes: [.item],
-                allowsMultipleSelection: true
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    Task {
-                        await importModels(from: urls)
-                    }
-                case .failure(let error):
-                    appState.lastError = "Import failed: \(error.localizedDescription)"
-                }
+            case .failure(let error):
+                appState.lastError = "Import failed: \(error.localizedDescription)"
             }
         }
         .dismissKeyboardOnTap()
@@ -738,6 +746,7 @@ struct PrecisionSliderView: View {
 }
 
 // MARK: - Dictionary Edit Views
+@MainActor
 struct DictionaryEditView: View {
     @EnvironmentObject private var appState: AppState
     @State private var allWords: [String: String] = [:]
@@ -755,22 +764,19 @@ struct DictionaryEditView: View {
     @State private var showingSuccessAlert = false
     @State private var successMessage = ""
 
-    var filteredKeys: [String] {
+    @State private var visibleCount = 100
+
+    var matchedKeys: [String] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if query.isEmpty {
-            return Array(sortedKeys.prefix(100))
+            return sortedKeys
         } else {
-            var matches: [String] = []
-            for key in sortedKeys {
-                if key.contains(query) {
-                    matches.append(key)
-                    if matches.count >= 100 {
-                        break
-                    }
-                }
-            }
-            return matches
+            return sortedKeys.filter { $0.contains(query) }
         }
+    }
+
+    var filteredKeys: [String] {
+        return Array(matchedKeys.prefix(visibleCount))
     }
 
     var body: some View {
@@ -782,9 +788,27 @@ struct DictionaryEditView: View {
                 List {
                     if searchText.isEmpty {
                         Section {
-                            Text("Hiển thị 100 từ đầu tiên. Nhập từ khóa để tìm kiếm các từ khác.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            if filteredKeys.count < sortedKeys.count {
+                                Text("Hiển thị \(filteredKeys.count)/\(sortedKeys.count) từ. Cuộn xuống để tải thêm.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            } else {
+                                Text("Đã hiển thị toàn bộ \(sortedKeys.count) từ.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    } else {
+                        Section {
+                            if filteredKeys.count < matchedKeys.count {
+                                Text("Hiển thị \(filteredKeys.count)/\(matchedKeys.count) từ kết quả. Cuộn xuống để tải thêm.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            } else {
+                                Text("Đã hiển thị toàn bộ \(matchedKeys.count) từ kết quả.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
 
@@ -816,12 +840,20 @@ struct DictionaryEditView: View {
                                     Label("Xóa", systemImage: "trash")
                                 }
                             }
+                            .onAppear {
+                                if key == filteredKeys.last && visibleCount < matchedKeys.count {
+                                    visibleCount += 100
+                                }
+                            }
                         }
                     } header: {
                         Text("Từ vựng (\(allWords.count) từ)")
                     }
                 }
                 .searchable(text: $searchText, prompt: "Tìm từ...")
+                .onChange(of: searchText) { _ in
+                    visibleCount = 100
+                }
                 .overlay {
                     if filteredKeys.isEmpty && !searchText.isEmpty {
                         VStack(spacing: 8) {
@@ -1020,6 +1052,7 @@ struct EditingEntry: Identifiable {
     }
 }
 
+@MainActor
 struct AddWordSheet: View {
     @Environment(\.dismiss) var dismiss
     @State private var key = ""
@@ -1035,7 +1068,7 @@ struct AddWordSheet: View {
                     TextField("Từ gốc (tiếng Anh/Nhật, e.g. apple)", text: $key)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                        .onChange(of: key) { newValue in
+                        .onChange(of: key) { oldValue, newValue in
                             validateKey(newValue)
                         }
 
@@ -1082,6 +1115,7 @@ struct AddWordSheet: View {
     }
 }
 
+@MainActor
 struct EditWordSheet: View {
     @Environment(\.dismiss) var dismiss
     let key: String
