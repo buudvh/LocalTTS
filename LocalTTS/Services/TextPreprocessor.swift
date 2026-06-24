@@ -938,7 +938,7 @@ final class JapaneseTransliterator {
             return word
         }
 
-        var viSyllables = syllables.map { romajiToViSyllable[$0] ?? $0 }
+        let viSyllables = syllables.map { romajiToViSyllable[$0] ?? $0 }
 
         var merged: [String] = []
         i = 0
@@ -1483,7 +1483,7 @@ final actor TextPreprocessor {
     static func processTime(_ text: String) -> String {
         var e = text
 
-        e = replaceMatches(in: e, regex: timeHms) { match, ns in
+        e = replaceMatches(in: e, regex: PreprocessorRegex.timeHms) { match, ns in
             let hr = ns.substring(with: match.range(at: 1))
             let min = ns.substring(with: match.range(at: 2))
             var replacement = "\(VietnameseNumberSpeller.spell(hr)) giờ"
@@ -1496,7 +1496,7 @@ final actor TextPreprocessor {
             return replacement
         }
 
-        e = replaceMatches(in: e, regex: timeCompactHM) { match, ns in
+        e = replaceMatches(in: e, regex: PreprocessorRegex.timeCompactHM) { match, ns in
             let hrStr = ns.substring(with: match.range(at: 1))
             let minStr = ns.substring(with: match.range(at: 2))
             if let hr = Int(hrStr), let min = Int(minStr), hr >= 0 && hr <= 23 && min >= 0 && min <= 59 {
@@ -1505,7 +1505,7 @@ final actor TextPreprocessor {
             return nil
         }
 
-        e = replaceMatches(in: e, regex: timeCompactH) { match, ns in
+        e = replaceMatches(in: e, regex: PreprocessorRegex.timeCompactH) { match, ns in
             let hrStr = ns.substring(with: match.range(at: 1))
             if let hr = Int(hrStr), hr >= 0 && hr <= 23 {
                 return "\(VietnameseNumberSpeller.spell(hrStr)) giờ"
@@ -1513,13 +1513,13 @@ final actor TextPreprocessor {
             return nil
         }
 
-        e = replaceMatches(in: e, regex: timeHourMinute) { match, ns in
+        e = replaceMatches(in: e, regex: PreprocessorRegex.timeHourMinute) { match, ns in
             let s = ns.substring(with: match.range(at: 1))
             let r = ns.substring(with: match.range(at: 2))
             return "\(VietnameseNumberSpeller.spell(s)) giờ \(VietnameseNumberSpeller.spell(r)) phút"
         }
 
-        e = replaceMatches(in: e, regex: timeHourOnly) { match, ns in
+        e = replaceMatches(in: e, regex: PreprocessorRegex.timeHourOnly) { match, ns in
             let s = ns.substring(with: match.range(at: 1))
             return "\(VietnameseNumberSpeller.spell(s)) giờ"
         }
