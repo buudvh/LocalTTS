@@ -114,12 +114,12 @@ struct ContentView: View {
                 // Tab 1: TTS
                 NavigationStack {
                     Form {
-                        Section("NghiTTS Voices") {
+                        Section("Giọng đọc") {
                             if isLoadingVoices {
                                 ProgressView()
                             }
 
-                            Picker("Voice", selection: $selectedVoice) {
+                            Picker("Giọng đọc", selection: $selectedVoice) {
                                 ForEach(voices.isEmpty ? [selectedVoice] : voices, id: \.self) { voice in
                                     Text(voice.name).tag(voice)
                                 }
@@ -150,7 +150,7 @@ struct ContentView: View {
                             }
                         }
 
-                        Section("Test TTS") {
+                        Section("Test giọng đọc") {
                             HStack {
                                 TextField("Văn bản cần đọc", text: $testText, axis: .vertical)
                                     .lineLimit(3...10)
@@ -182,6 +182,13 @@ struct ContentView: View {
                                 Task { await testTTS() }
                             }
                             .disabled(isSynthesizing || testText.trimmed.isEmpty)
+                        }
+
+                        if let error = appState.lastError {
+                            Section("Error") {
+                                Text(error)
+                                    .foregroundStyle(.red)
+                            }
                         }
                     }
                     .navigationTitle("LocalTTS")
