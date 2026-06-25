@@ -26,18 +26,23 @@ final class ModelStore: ObservableObject {
             )
     }
 
-    init(fileManager: FileManager = .default) throws {
+    init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
-        let appSupport = try fileManager.url(
+
+        let appSupport = try? fileManager.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
         )
-        self.rootURL = appSupport.appendingPathComponent("LocalTTS", isDirectory: true)
+
+        let base = appSupport ?? fileManager.temporaryDirectory
+
+        self.rootURL = base.appendingPathComponent("LocalTTS", isDirectory: true)
         self.modelsURL = rootURL.appendingPathComponent("Models", isDirectory: true)
         self.voicesCacheURL = rootURL.appendingPathComponent("voices.json")
-        try fileManager.createDirectory(at: modelsURL, withIntermediateDirectories: true)
+
+        try? fileManager.createDirectory(at: modelsURL, withIntermediateDirectories: true)
     }
 
     func cacheSummary() -> CacheSummary {
