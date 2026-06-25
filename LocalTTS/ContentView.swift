@@ -50,31 +50,20 @@ struct ContentView: View {
     private func showToast(_ message: String, isError: Bool) {
         toastTask?.cancel()
 
-        if toast != nil {
-            toast = nil
-        }
-
-        withAnimation(
-            .spring(
-                response: 0.4,
-                dampingFraction: 0.85
-            )
-        ) {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
             toast = ToastConfig(
                 message: message,
                 isError: isError
             )
         }
 
-        toastTask = Task {
+        toastTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
 
             guard !Task.isCancelled else { return }
 
-            await MainActor.run {
-                withAnimation(.easeOut(duration: 0.25)) {
-                    toast = nil
-                }
+            withAnimation(.easeOut(duration: 0.25)) {
+                toast = nil
             }
         }
     }
@@ -82,6 +71,7 @@ struct ContentView: View {
     private func dismissToast() {
         toastTask?.cancel()
         toastTask = nil
+
         withAnimation(.easeOut(duration: 0.25)) {
             toast = nil
         }
@@ -455,37 +445,34 @@ struct ContentView: View {
             await loadVoices(forceRefresh: false)
         }
         .dismissKeyboardOnTap()
-        .safeAreaInset(edge: .bottom) {
+        .overlay(alignment: .bottom) {
             if let toast = toast {
-                HStack(spacing: 10) {
-                    Image(systemName: toast.isError
-                        ? "exclamationmark.circle.fill"
-                        : "checkmark.circle.fill")
-
-                    Text(toast.message)
-                        .font(.subheadline)
-                        .multilineTextAlignment(.leading)
-                }
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
-                .shadow(radius: 8)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
-                .transition(
-                    .asymmetric(
-                        insertion: .move(edge: .bottom)
-                            .combined(with: .opacity),
-                        removal: .opacity
-                    )
-                )
-                .onTapGesture {
-                    dismissToast()
-                }
+                toastView(toast)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, safeAreaBottomPadding)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(999)
+                    .onTapGesture { dismissToast() }
             }
         }
+    }
+
+    @ViewBuilder
+    private func toastView(_ toast: Toast) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: toast.isError
+                ? "exclamationmark.circle.fill"
+                : "checkmark.circle.fill")
+
+            Text(toast.message)
+                .font(.subheadline)
+        }
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
+        .clipShape(Capsule())
+        .shadow(radius: 8)
     }
 
     @ViewBuilder

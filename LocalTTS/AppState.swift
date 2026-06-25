@@ -21,6 +21,12 @@ final class AppState: ObservableObject {
             self.ttsService = PiperTTSService(modelStore: store)
             self.apiHandler = APIHandler(nghiClient: nghiClient, ttsService: ttsService, modelStore: store)
             self.server = LocalHTTPServer(port: 17771, handler: apiHandler)
+            store.objectWillChange
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.objectWillChange.send()
+                }
+                .store(in: &cancellables)
             self.server.objectWillChange
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] _ in

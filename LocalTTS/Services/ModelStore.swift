@@ -1,7 +1,7 @@
 import Foundation
 
 
-final class ModelStore {
+final class ModelStore: ObservableObject {
     private let fileManager: FileManager
     let rootURL: URL
     let modelsURL: URL
