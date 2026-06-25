@@ -389,7 +389,7 @@ struct ContentView: View {
         }
         .fileImporter(
             isPresented: $isShowingFileImporter,
-            allowedContentTypes: [.item],
+            allowedContentTypes: [.data],
             allowsMultipleSelection: true
         ) { result in
             switch result {
@@ -401,8 +401,11 @@ struct ContentView: View {
                 if validURLs.isEmpty {
                     showToast("Vui lòng chọn tệp tin mô hình (.onnx) hoặc cấu hình (.json).", isError: true)
                 } else {
+                    let urlsWithAccess = validURLs.map { url in
+                        (url: url, hasAccess: url.startAccessingSecurityScopedResource())
+                    }
                     Task {
-                        await importModels(from: validURLs)
+                        await importModels(from: urlsWithAccess)
                     }
                 }
             case .failure(let error):
@@ -599,16 +602,15 @@ struct ContentView: View {
         }
     }
 
-    private func importModels(from urls: [URL]) async {
+    private func importModels(from urlsWithAccess: [(url: URL, hasAccess: Bool)]) async {
         let fm = FileManager.default
         var importCount = 0
         var errorCount = 0
         
-        let onnxUrls = urls.filter { $0.pathExtension.lowercased() == "onnx" }
+        let onnxUrls = urlsWithAccess.map { $0.url }.filter { $0.pathExtension.lowercased() == "onnx" }
         let singleOnnxVoiceId = onnxUrls.count == 1 ? onnxUrls[0].deletingPathExtension().lastPathComponent.toASCIIID : nil
         
-        for url in urls {
-            let access = url.startAccessingSecurityScopedResource()
+        for (url, access) in urlsWithAccess {
             defer {
                 if access {
                     url.stopAccessingSecurityScopedResource()
@@ -919,6 +921,8 @@ struct DictionaryEditView: View {
     @State private var errorMessage: String? = nil
     @State private var isLoading = false
     @State private var exportURL: URL? = nil
+    @State private var exportJsonURL: URL? = nil
+    @State private var exportCsvURL: URL? = nil
     
     @State private var showingFileImporter = false
     @State private var showingDownloadConfirmation = false
@@ -1066,10 +1070,18 @@ struct DictionaryEditView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 16) {
-                    if let exportURL = exportURL {
-                        ShareLink(item: exportURL) {
-                            Image(systemName: "square.and.arrow.up")
+                    Menu {
+                        if let plistURL = exportURL {
+                            ShareLink("Property List (.plist)", item: plistURL)
                         }
+                        if let jsonURL = exportJsonURL {
+                            ShareLink("JSON (.json)", item: jsonURL)
+                        }
+                        if let csvURL = exportCsvURL {
+                            ShareLink("CSV (.csv)", item: csvURL)
+                        }
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
                     }
                     Button {
                         showingFileImporter = true
@@ -1104,16 +1116,18 @@ struct DictionaryEditView: View {
         }
         .fileImporter(
             isPresented: $showingFileImporter,
-            allowedContentTypes: [.item],
+            allowedContentTypes: [.data],
             allowsMultipleSelection: false
         ) { result in
             switch result {
             case .success(let urls):
                 guard let selectedURL = urls.first else { return }
-                if selectedURL.pathExtension.lowercased() != "plist" {
-                    showToast("Vui lòng chọn tệp .plist chứa từ điển.", isError: true)
+                let ext = selectedURL.pathExtension.lowercased()
+                if ext != "plist" && ext != "json" && ext != "csv" && ext != "txt" {
+                    showToast("Vui lòng chọn tệp từ điển (.plist, .json, hoặc .csv/.txt).", isError: true)
                 } else {
-                    importDictionary(from: selectedURL)
+                    let hasAccess = selectedURL.startAccessingSecurityScopedResource()
+                    importDictionary(from: selectedURL, hasAccess: hasAccess)
                 }
             case .failure(let error):
                 showToast("Lỗi chọn tệp: \(error.localizedDescription)", isError: true)
@@ -1154,7 +1168,30 @@ struct DictionaryEditView: View {
         let map = await TextPreprocessor.shared.getWordMap()
         allWords = map
         sortedKeys = map.keys.sorted()
-        exportURL = TextPreprocessor.getWordsURL()
+        
+        let fm = FileManager.default
+        if let cachesURL = fm.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            let plistURL = cachesURL.appendingPathComponent("non-vietnamese-words.plist")
+            let jsonURL = cachesURL.appendingPathComponent("dictionary.json")
+            let csvURL = cachesURL.appendingPathComponent("dictionary.csv")
+            
+            if let plistData = try? PropertyListSerialization.data(fromPropertyList: map, format: .xml, options: 0) {
+                try? plistData.write(to: plistURL, options: .atomic)
+                exportURL = plistURL
+            }
+            
+            if let jsonData = try? JSONSerialization.data(withJSONObject: map, options: [.prettyPrinted, .sortedKeys]) {
+                try? jsonData.write(to: jsonURL, options: .atomic)
+                exportJsonURL = jsonURL
+            }
+            
+            let csvString = generateCSV(from: map)
+            if let csvData = csvString.data(using: .utf8) {
+                try? csvData.write(to: csvURL, options: .atomic)
+                exportCsvURL = csvURL
+            }
+        }
+        
         isLoading = false
     }
 
@@ -1172,17 +1209,88 @@ struct DictionaryEditView: View {
         }
     }
 
-    private func importDictionary(from url: URL) {
-        isLoading = true
-        Task {
-            do {
-                let access = url.startAccessingSecurityScopedResource()
-                defer {
-                    if access {
-                        url.stopAccessingSecurityScopedResource()
+    private func parseCSV(data: Data) throws -> [String: String] {
+        guard let content = String(data: data, encoding: .utf8) else {
+            throw NSError(domain: "CSVParser", code: 1, userInfo: [NSLocalizedDescriptionKey: "Không thể đọc tệp CSV dưới dạng UTF-8."])
+        }
+        
+        var dict: [String: String] = [:]
+        let lines = content.components(separatedBy: .newlines)
+        
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+            
+            var fields: [String] = []
+            var currentField = ""
+            var insideQuotes = false
+            
+            let chars = Array(trimmed)
+            var idx = 0
+            while idx < chars.count {
+                let char = chars[idx]
+                
+                if char == "\"" {
+                    if insideQuotes && idx + 1 < chars.count && chars[idx + 1] == "\"" {
+                        currentField.append("\"")
+                        idx += 2
+                        continue
+                    } else {
+                        insideQuotes.toggle()
                     }
+                } else if char == "," && !insideQuotes {
+                    fields.append(currentField.trimmingCharacters(in: .whitespacesAndNewlines))
+                    currentField = ""
+                } else {
+                    currentField.append(char)
+                }
+                idx += 1
+            }
+            fields.append(currentField.trimmingCharacters(in: .whitespacesAndNewlines))
+            
+            if fields.count >= 2 {
+                let key = fields[0]
+                let val = fields[1]
+                
+                if (key == "Từ gốc" || key.lowercased() == "key" || key.lowercased() == "original") &&
+                   (val == "Thay thế" || val.lowercased() == "value" || val.lowercased() == "replacement") {
+                    continue
                 }
                 
+                if !key.isEmpty {
+                    dict[key.lowercased()] = val
+                }
+            }
+        }
+        
+        if dict.isEmpty {
+            throw NSError(domain: "CSVParser", code: 2, userInfo: [NSLocalizedDescriptionKey: "Tệp CSV không chứa dữ liệu từ điển hợp lệ hoặc sai cấu trúc."])
+        }
+        return dict
+    }
+    
+    private func generateCSV(from dict: [String: String]) -> String {
+        var csvContent = "Từ gốc,Thay thế\n"
+        let sortedKeys = dict.keys.sorted()
+        for key in sortedKeys {
+            let val = dict[key] ?? ""
+            let escapedKey = key.replacingOccurrences(of: "\"", with: "\"\"")
+            let escapedVal = val.replacingOccurrences(of: "\"", with: "\"\"")
+            csvContent += "\"\(escapedKey)\",\"\(escapedVal)\"\n"
+        }
+        return csvContent
+    }
+
+    private func importDictionary(from url: URL, hasAccess: Bool) {
+        isLoading = true
+        Task {
+            defer {
+                if hasAccess {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            
+            do {
                 let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
                 let fileSize = resourceValues.fileSize ?? 0
                 if fileSize <= 0 {
@@ -1193,19 +1301,37 @@ struct DictionaryEditView: View {
                 }
                 
                 let data = try Data(contentsOf: url)
-                guard let plistDict = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: String] else {
-                    throw NSError(domain: "DictionaryEditView", code: 400, userInfo: [NSLocalizedDescriptionKey: "Tệp không hợp lệ. Vui lòng chọn tệp .plist chứa định dạng [String: String]."])
+                let ext = url.pathExtension.lowercased()
+                
+                var importedWords: [String: String] = [:]
+                
+                if ext == "plist" {
+                    guard let dict = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: String] else {
+                        throw NSError(domain: "DictionaryEditView", code: 400, userInfo: [NSLocalizedDescriptionKey: "Tệp .plist không hợp lệ. Vui lòng chọn tệp chứa định dạng [String: String]."])
+                    }
+                    importedWords = dict
+                } else if ext == "json" {
+                    guard let dict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: String] else {
+                        throw NSError(domain: "DictionaryEditView", code: 400, userInfo: [NSLocalizedDescriptionKey: "Tệp .json không hợp lệ. Vui lòng chọn tệp chứa dạng cặp khóa-giá trị phẳng [String: String]."])
+                    }
+                    importedWords = dict
+                } else if ext == "csv" || ext == "txt" {
+                    importedWords = try parseCSV(data: data)
+                } else {
+                    throw NSError(domain: "DictionaryEditView", code: 400, userInfo: [NSLocalizedDescriptionKey: "Định dạng tệp không được hỗ trợ."])
                 }
                 
                 guard let localWordsURL = TextPreprocessor.getWordsURL() else {
                     throw NSError(domain: "DictionaryEditView", code: 500, userInfo: [NSLocalizedDescriptionKey: "Không thể định vị đường dẫn lưu từ điển."])
                 }
                 
-                try data.write(to: localWordsURL, options: .atomic)
+                let plistData = try PropertyListSerialization.data(fromPropertyList: importedWords, format: .xml, options: 0)
+                try plistData.write(to: localWordsURL, options: .atomic)
+                
                 await TextPreprocessor.shared.loadResources()
                 await loadDictionary()
                 
-                showToast("Nhập từ điển thành công! Đã cập nhật \(plistDict.count) từ.", isError: false)
+                showToast("Nhập từ điển thành công! Đã cập nhật \(importedWords.count) từ.", isError: false)
             } catch {
                 showToast("Lỗi nhập từ điển: \(error.localizedDescription)", isError: true)
             }

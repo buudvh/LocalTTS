@@ -39,6 +39,25 @@ final class PiperTTSService {
         _currentModel = voice
         lock.unlock()
         
+        // Nếu không chứa ký tự chữ/số nào, tạo khoảng lặng chờ tương đương dấu câu và trả về ngay
+        if text.rangeOfCharacter(from: .alphanumerics) == nil {
+            let sampleRate = 22050 // Tần số mẫu mặc định của mô hình
+            let phrasePause = UserDefaults.standard.double(forKey: "phrasePauseDuration")
+            let sentencePause = UserDefaults.standard.double(forKey: "sentencePauseDuration")
+            let hasSentencePunct = text.contains(".") || text.contains("!") || text.contains("?")
+            let pauseDuration = hasSentencePunct ? (sentencePause > 0 ? sentencePause : 0.4) : (phrasePause > 0 ? phrasePause : 0.2)
+            
+            let scaledDuration = pauseDuration / speed
+            let silenceSamplesCount = Int(Double(sampleRate) * scaledDuration)
+            let silenceSamples = [Float](repeating: 0.0, count: max(0, silenceSamplesCount))
+            
+            return WAVEncoder.encodePCM16(
+                samples: silenceSamples,
+                sampleRate: sampleRate,
+                channels: 1
+            )
+        }
+
         let preprocessedText = await TextPreprocessor.shared.preprocess(text)
         
         return try await engine.synthesize(

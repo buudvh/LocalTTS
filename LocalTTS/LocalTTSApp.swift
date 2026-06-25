@@ -6,10 +6,10 @@ struct LocalTTSApp: App {
 
     init() {
         UserDefaults.standard.register(defaults: [
-            "newlinePauseDuration": 0.5,
-            "sentencePauseDuration": 0.4,
+            "newlinePauseDuration": 0.4,
+            "sentencePauseDuration": 0.3,
             "phrasePauseDuration": 0.15,
-            "bracketPauseDuration": 0.15,
+            "bracketPauseDuration": 0.1,
             PreprocessorSettingKey.numericNormalizationEnabled: true,
             PreprocessorSettingKey.dictionaryReplacementEnabled: true,
             PreprocessorSettingKey.transliterationEnabled: true,

@@ -50,8 +50,8 @@ private enum PreprocessorRegex {
     static let www = try! NSRegularExpression(pattern: #"www\.\S+"#, options: [])
     static let email = try! NSRegularExpression(pattern: #"\S+@\S+\.\S+"#, options: [])
 
-    static let doubleQuotes = try! NSRegularExpression(pattern: #"[\"“”„‟]"#, options: [])
-    static let singleQuotes = try! NSRegularExpression(pattern: #"['‚‛]"#, options: [])
+    static let doubleQuotes = try! NSRegularExpression(pattern: #"[\"“”„‟«»＂″]"#, options: [])
+    static let singleQuotes = try! NSRegularExpression(pattern: #"['’‘‚‛＇‹›]"#, options: [])
     static let dashes = try! NSRegularExpression(pattern: #"[–—−]"#, options: [])
     static let ellipsis = try! NSRegularExpression(pattern: #"\.{3,}"#, options: [])
     static let repeatedSentencePunctuation = try! NSRegularExpression(pattern: #"([!?.])\1+"#, options: [])
@@ -60,12 +60,12 @@ private enum PreprocessorRegex {
         pattern: "[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|[\u{1F018}-\u{1F270}]|[\u{238C}-\u{2454}]|[\u{20D0}-\u{20FF}]|\u{FE0F}|\u{200D}",
         options: []
     )
-    static let bracketQuotes = try! NSRegularExpression(pattern: #"[\(\)\\'"]"#, options: [])
+    static let bracketQuotes = try! NSRegularExpression(pattern: #"[']"#, options: [])
     static let doubleQuoteToSpace = try! NSRegularExpression(pattern: #"["“”]"#, options: [])
     static let whitespaceBeforePeriod = try! NSRegularExpression(pattern: #"\s—"#, options: [])
     static let underscoreWord = try! NSRegularExpression(pattern: #"\b_\b"#, options: [])
     static let nonDigitDash = try! NSRegularExpression(pattern: #"(?<!\d)-(?!\d)"#, options: [])
-    static let allowedChars = try! NSRegularExpression(pattern: #"[^\u0000-\u024F\u1E00-\u1EFF\u3040-\u30FF]"#, options: [])
+    static let allowedChars = try! NSRegularExpression(pattern: #"[^\u0000-\u024F\u1E00-\u1EFF\u3000-\u303F\u3040-\u30FF\uFF00-\uFFEF]"#, options: [])
     static let whitespaceCollapse = try! NSRegularExpression(pattern: #"\s+"#, options: [])
 
     static let thousandsSeparatedNumber = try! NSRegularExpression(pattern: #"(\d{1,3}(?:\.\d{3})+)(?=\s|$|[^\d.,])"#, options: [])
@@ -1302,7 +1302,6 @@ final actor TextPreprocessor {
         var e = text
         e = PreprocessorRegex.emoji.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: " ")
         e = PreprocessorRegex.bracketQuotes.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: " ")
-        e = PreprocessorRegex.doubleQuoteToSpace.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: " ")
         e = PreprocessorRegex.whitespaceBeforePeriod.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: ".")
         e = PreprocessorRegex.underscoreWord.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: " ")
         e = PreprocessorRegex.nonDigitDash.stringByReplacingMatches(in: e, options: [], range: NSRange(location: 0, length: e.utf16.count), withTemplate: " ")

@@ -80,6 +80,12 @@ final class EspeakPhonemizer {
             isInitialized = true
         }
 
+        // Nếu không chứa ký tự chữ/số nào, trả về rỗng ngay lập tức để tránh gọi espeak vô ích
+        guard text.rangeOfCharacter(from: .alphanumerics) != nil else {
+            appLog("[EspeakPhonemizer] Text contains no alphanumeric characters, returning empty phonemes.")
+            return ""
+        }
+
         guard let cString = text.cString(using: .utf8) else {
             throw APIError.badRequest("Invalid UTF-8 text.")
         }
@@ -90,6 +96,7 @@ final class EspeakPhonemizer {
         cString.withUnsafeBufferPointer { buffer in
             guard let baseAddress = buffer.baseAddress else { return }
             var textPointer: UnsafeRawPointer? = UnsafeRawPointer(baseAddress)
+            var lastPointer = textPointer
             
             while textPointer != nil {
                 iterations += 1
@@ -101,6 +108,14 @@ final class EspeakPhonemizer {
                 // phonememode: 2 (IPA - International Phonetic Alphabet as UTF-8)
                 appLog("[EspeakPhonemizer] [P6] calling espeak_TextToPhonemes (iteration: \(iterations))")
                 let phonemesCStr = espeak_TextToPhonemes(&textPointer, 1, 2)
+                
+                // Tránh lặp vô hạn nếu con trỏ không dịch chuyển sau cuộc gọi
+                if textPointer == lastPointer {
+                    appLog("[EspeakPhonemizer] [P_WARN] textPointer did not advance (value: \(String(describing: textPointer))), breaking loop to prevent hang")
+                    break
+                }
+                lastPointer = textPointer
+                
                 appLog("[EspeakPhonemizer] [P6_Result] Pointer: \(String(describing: phonemesCStr))")
                 appLog("[EspeakPhonemizer] [P6_Result] textPointer after call: \(String(describing: textPointer))")
                 if let phonemesCStr {
