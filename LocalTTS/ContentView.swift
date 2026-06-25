@@ -47,20 +47,12 @@ struct ContentView: View {
         let isError: Bool
     }
 
-    @Environment(\.safeAreaInsets) private var safeAreaInsets
-
-    private var safeAreaBottomPadding: CGFloat {
-        safeAreaInsets.bottom + 12
-    }
-
     private func showToast(_ message: String, isError: Bool) {
+
         toastTask?.cancel()
 
         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-            toast = ToastConfig(
-                message: message,
-                isError: isError
-            )
+            toast = ToastConfig(message: message, isError: isError)
         }
 
         toastTask = Task { @MainActor in
@@ -73,6 +65,7 @@ struct ContentView: View {
             }
         }
     }
+
 
     private func dismissToast() {
         toastTask?.cancel()
@@ -116,370 +109,372 @@ struct ContentView: View {
 
 
     var body: some View {
-        TabView(selection: $activeTab) {
-            // Tab 1: TTS
-            NavigationStack {
-                Form {
-                    Section("NghiTTS Voices") {
-                        if isLoadingVoices {
-                            ProgressView()
-                        }
-
-                        Picker("Voice", selection: $selectedVoice) {
-                            ForEach(voices.isEmpty ? [selectedVoice] : voices, id: \.self) { voice in
-                                Text(voice.name).tag(voice)
+        ZStack {
+            TabView(selection: $activeTab) {
+                // Tab 1: TTS
+                NavigationStack {
+                    Form {
+                        Section("NghiTTS Voices") {
+                            if isLoadingVoices {
+                                ProgressView()
                             }
-                        }
 
-                        Button("Làm mới danh sách giọng đọc") {
-                            Task { await loadVoices(forceRefresh: true) }
-                        }
-
-                        Button("Tải trước model đã chọn") {
-                            Task { await prefetchSelectedVoice() }
-                        }
-                        .disabled(isDownloadingModel || isLoadingVoices)
-
-                        if isDownloadingModel {
-                            ProgressView(value: downloadProgressValue) {
-                                Text(downloadMessage)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                            Picker("Voice", selection: $selectedVoice) {
+                                ForEach(voices.isEmpty ? [selectedVoice] : voices, id: \.self) { voice in
+                                    Text(voice.name).tag(voice)
+                                }
                             }
-                            .padding(.vertical, 8)
-                        }
 
-                        if !prefetchStatus.isEmpty {
-                            Text(prefetchStatus)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                            Button("Làm mới danh sách giọng đọc") {
+                                Task { await loadVoices(forceRefresh: true) }
+                            }
 
-                    Section("Test TTS") {
-                        HStack {
-                            TextField("Văn bản cần đọc", text: $testText, axis: .vertical)
-                                .lineLimit(3...10)
-                            
-                            if !testText.isEmpty {
-                                Button(action: {
-                                    testText = ""
-                                }) {
-                                    Image(systemName: "xmark.circle.fill")
+                            Button("Tải trước model đã chọn") {
+                                Task { await prefetchSelectedVoice() }
+                            }
+                            .disabled(isDownloadingModel || isLoadingVoices)
+
+                            if isDownloadingModel {
+                                ProgressView(value: downloadProgressValue) {
+                                    Text(downloadMessage)
+                                        .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
-                                .buttonStyle(.plain)
+                                .padding(.vertical, 8)
+                            }
+
+                            if !prefetchStatus.isEmpty {
+                                Text(prefetchStatus)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         }
-                        
-                        Slider(value: $testSpeed, in: 0.5...2.0, step: 0.1) {
-                            Text("Speed")
-                        } minimumValueLabel: {
-                            Text("0.5x")
-                        } maximumValueLabel: {
-                            Text("2.0x")
-                        }
-                        
-                        Text(String(format: "Speed: %.1fx", testSpeed))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
 
-                        Button(isSynthesizing ? "Đang xử lý..." : "Đọc") {
-                            Task { await testTTS() }
-                        }
-                        .disabled(isSynthesizing || testText.trimmed.isEmpty)
-                    }
-                }
-                .navigationTitle("LocalTTS")
-            }
-            .tabItem {
-                Label("TTS", systemImage: "waveform.and.mic")
-            }
-            .tag(TabType.tts)
-            
-            // Tab 2: Model (Quản lý Model)
-            NavigationStack {
-                List {
-                    Section {
-                        Button(action: {
-                            isShowingFileImporter = true
-                        }) {
-                            Label("Nhập Model Ngoài...", systemImage: "square.and.arrow.down")
-                        }
-                        .fileImporter(
-                            isPresented: $isShowingFileImporter,
-                            allowedContentTypes: [.data],
-                            allowsMultipleSelection: true
-                        ) { result in
-                            //AppLogger.shared.log("[DEBUG_IMPORT] IMPORTER CALLBACK TRIGGERED")
-                            switch result {
-                            case .success(let urls):
-                                //AppLogger.shared.log("[DEBUG_IMPORT] SUCCESS: Received \(urls.count) URLs")
-                                for url in urls {
-                                    //AppLogger.shared.log("[DEBUG_IMPORT] - URL: \(url.absoluteString)")
-                                    let fileExists = FileManager.default.fileExists(atPath: url.path)
-                                    //AppLogger.shared.log("[DEBUG_IMPORT] - File exists check (direct path): \(fileExists)")
-                                    
-                                    let hasAccess = url.startAccessingSecurityScopedResource()
-                                    //AppLogger.shared.log("[DEBUG_IMPORT] - startAccessingSecurityScopedResource: \(hasAccess)")
-                                    
-                                    do {
-                                        let data = try Data(contentsOf: url)
-                                        //AppLogger.shared.log("[DEBUG_IMPORT] - Read data success: \(data.count) bytes")
-                                    } catch {
-                                        //AppLogger.shared.log("[DEBUG_IMPORT] - Read data failed: \(error.localizedDescription)")
-                                    }
-                                    
-                                    if hasAccess {
-                                        url.stopAccessingSecurityScopedResource()
-                                    }
-                                }
+                        Section("Test TTS") {
+                            HStack {
+                                TextField("Văn bản cần đọc", text: $testText, axis: .vertical)
+                                    .lineLimit(3...10)
                                 
-                                let validURLs = urls.filter {
-                                    let ext = $0.pathExtension.lowercased()
-                                    return ext == "onnx" || ext == "json"
-                                }
-                                if validURLs.isEmpty {
-                                    showToast("Vui lòng chọn tệp tin model (.onnx) hoặc cấu hình (.json).", isError: true)
-                                } else {
-                                    let urlsWithAccess = validURLs.map { url in
-                                        (url: url, hasAccess: url.startAccessingSecurityScopedResource())
+                                if !testText.isEmpty {
+                                    Button(action: {
+                                        testText = ""
+                                    }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(.secondary)
                                     }
-                                    //AppLogger.shared.log("[DEBUG_IMPORT] ABOUT TO START IMPORT TASK")
-                                    Task {
-                                        await importModels(from: urlsWithAccess)
-                                    }
+                                    .buttonStyle(.plain)
                                 }
-                            case .failure(let error):
-                                //AppLogger.shared.log("[DEBUG_IMPORT] FAILURE: \(error.localizedDescription)")
-                                appState.lastError = "Import failed: \(error.localizedDescription)"
                             }
-                        }
-                    }
-                    
-                    Section(header: HStack {
-                        Text("Giọng đọc đặc sắc")
-                        Spacer()
-                        HStack(spacing: 12) {
-                            Button("Tải tất cả") {
-                                downloadAll(in: topVoices)
-                            }
-                            .buttonStyle(.borderless)
-                            .textCase(.none)
-                            .font(.caption)
                             
-                            Button("Xóa tất cả", role: .destructive) {
-                                deleteAll(in: topVoices)
+                            Slider(value: $testSpeed, in: 0.5...2.0, step: 0.1) {
+                                Text("Speed")
+                            } minimumValueLabel: {
+                                Text("0.5x")
+                            } maximumValueLabel: {
+                                Text("2.0x")
                             }
-                            .buttonStyle(.borderless)
-                            .textCase(.none)
-                            .font(.caption)
-                            .foregroundColor(.red)
-                        }
-                    }) {
-                        ForEach(topVoices) { voice in
-                            modelRow(for: voice)
-                        }
-                    }
-                    
-                    Section(header: HStack {
-                        Text("Giọng đọc hệ thống")
-                        Spacer()
-                        HStack(spacing: 12) {
-                            Button("Tải tất cả") {
-                                downloadAll(in: systemVoices)
-                            }
-                            .buttonStyle(.borderless)
-                            .textCase(.none)
-                            .font(.caption)
                             
-                            Button("Xóa tất cả", role: .destructive) {
-                                deleteAll(in: systemVoices)
+                            Text(String(format: "Speed: %.1fx", testSpeed))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Button(isSynthesizing ? "Đang xử lý..." : "Đọc") {
+                                Task { await testTTS() }
                             }
-                            .buttonStyle(.borderless)
-                            .textCase(.none)
-                            .font(.caption)
-                            .foregroundColor(.red)
-                        }
-                    }) {
-                        ForEach(systemVoices) { voice in
-                            modelRow(for: voice)
+                            .disabled(isSynthesizing || testText.trimmed.isEmpty)
                         }
                     }
-                    
-                    let custom = customVoices
-                    if !custom.isEmpty {
-                        Section(header: HStack {
-                            Text("Giọng đọc tùy chỉnh")
-                            Spacer()
-                            Button("Xóa tất cả", role: .destructive) {
-                                deleteAll(in: custom)
-                            }
-                            .buttonStyle(.borderless)
-                            .textCase(.none)
-                            .font(.caption)
-                            .foregroundColor(.red)
-                        }) {
-                            ForEach(custom) { voice in
-                                modelRow(for: voice, isCustom: true)
-                            }
-                        }
-                    }
+                    .navigationTitle("LocalTTS")
                 }
-                .navigationTitle("Quản lý Model")
-            }
-            .tabItem {
-                Label("Model", systemImage: "arrow.down.circle")
-            }
-            .tag(TabType.model)
-
-            // Tab 3: Từ điển (Màn hình Xóa/Sửa từ trực tiếp)
-            NavigationStack {
-                DictionaryEditView()
-            }
-            .tabItem {
-                Label("Từ điển", systemImage: "character.book.closed")
-            }
-            .tag(TabType.dictionary)
-            
-            // Tab 4: Hệ thống
-            NavigationStack {
-                Form {
-                    let hasNoModels = appState.modelStore.localVoiceIDs.isEmpty
-                    let hasNoDictionary = !appState.modelStore.hasDictionary
-
-                    if hasNoModels || hasNoDictionary {
-                        Section("Cảnh báo hệ thống") {
-                            if hasNoModels {
-                                HStack {
-                                    Label("Chưa tải model nào", systemImage: "exclamationmark.triangle.fill")
-                                        .foregroundColor(.orange)
-                                    Spacer()
-                                    Button("Thực hiện") {
-                                        activeTab = .model
+                .tabItem {
+                    Label("TTS", systemImage: "waveform.and.mic")
+                }
+                .tag(TabType.tts)
+                
+                // Tab 2: Model (Quản lý Model)
+                NavigationStack {
+                    List {
+                        Section {
+                            Button(action: {
+                                isShowingFileImporter = true
+                            }) {
+                                Label("Nhập Model Ngoài...", systemImage: "square.and.arrow.down")
+                            }
+                            .fileImporter(
+                                isPresented: $isShowingFileImporter,
+                                allowedContentTypes: [.data],
+                                allowsMultipleSelection: true
+                            ) { result in
+                                //AppLogger.shared.log("[DEBUG_IMPORT] IMPORTER CALLBACK TRIGGERED")
+                                switch result {
+                                case .success(let urls):
+                                    //AppLogger.shared.log("[DEBUG_IMPORT] SUCCESS: Received \(urls.count) URLs")
+                                    for url in urls {
+                                        //AppLogger.shared.log("[DEBUG_IMPORT] - URL: \(url.absoluteString)")
+                                        let fileExists = FileManager.default.fileExists(atPath: url.path)
+                                        //AppLogger.shared.log("[DEBUG_IMPORT] - File exists check (direct path): \(fileExists)")
+                                        
+                                        let hasAccess = url.startAccessingSecurityScopedResource()
+                                        //AppLogger.shared.log("[DEBUG_IMPORT] - startAccessingSecurityScopedResource: \(hasAccess)")
+                                        
+                                        do {
+                                            let data = try Data(contentsOf: url)
+                                            //AppLogger.shared.log("[DEBUG_IMPORT] - Read data success: \(data.count) bytes")
+                                        } catch {
+                                            //AppLogger.shared.log("[DEBUG_IMPORT] - Read data failed: \(error.localizedDescription)")
+                                        }
+                                        
+                                        if hasAccess {
+                                            url.stopAccessingSecurityScopedResource()
+                                        }
                                     }
-                                    .buttonStyle(.bordered)
+                                    
+                                    let validURLs = urls.filter {
+                                        let ext = $0.pathExtension.lowercased()
+                                        return ext == "onnx" || ext == "json"
+                                    }
+                                    if validURLs.isEmpty {
+                                        showToast("Vui lòng chọn tệp tin model (.onnx) hoặc cấu hình (.json).", isError: true)
+                                    } else {
+                                        let urlsWithAccess = validURLs.map { url in
+                                            (url: url, hasAccess: url.startAccessingSecurityScopedResource())
+                                        }
+                                        //AppLogger.shared.log("[DEBUG_IMPORT] ABOUT TO START IMPORT TASK")
+                                        Task {
+                                            await importModels(from: urlsWithAccess)
+                                        }
+                                    }
+                                case .failure(let error):
+                                    //AppLogger.shared.log("[DEBUG_IMPORT] FAILURE: \(error.localizedDescription)")
+                                    appState.lastError = "Import failed: \(error.localizedDescription)"
                                 }
                             }
-                            if hasNoDictionary {
-                                HStack {
-                                    Label("Chưa tải từ điển", systemImage: "exclamationmark.triangle.fill")
-                                        .foregroundColor(.orange)
-                                    Spacer()
-                                    Button("Thực hiện") {
-                                        activeTab = .dictionary
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-                            }
                         }
-                    }
-
-                    Section("Cấu hình") {
-                        Button(action: {
-                            isShowingSettings = true
-                        }) {
-                            Label("Cài đặt", systemImage: "gearshape")
-                        }
-                        .sheet(isPresented: $isShowingSettings) {
-                            SettingsView()
-                        }
-                    }
-
-                    Section("Server") {
-                        HStack {
-                            Text(appState.server.isRunning ? "Đang bật" : "Dừng")
+                        
+                        Section(header: HStack {
+                            Text("Giọng đọc đặc sắc")
                             Spacer()
-                            Circle()
-                                .fill(appState.server.isRunning ? Color.green : Color.gray)
-                                .frame(width: 10, height: 10)
+                            HStack(spacing: 12) {
+                                Button("Tải tất cả") {
+                                    downloadAll(in: topVoices)
+                                }
+                                .buttonStyle(.borderless)
+                                .textCase(.none)
+                                .font(.caption)
+                                
+                                Button("Xóa tất cả", role: .destructive) {
+                                    deleteAll(in: topVoices)
+                                }
+                                .buttonStyle(.borderless)
+                                .textCase(.none)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                            }
+                        }) {
+                            ForEach(topVoices) { voice in
+                                modelRow(for: voice)
+                            }
+                        }
+                        
+                        Section(header: HStack {
+                            Text("Giọng đọc hệ thống")
+                            Spacer()
+                            HStack(spacing: 12) {
+                                Button("Tải tất cả") {
+                                    downloadAll(in: systemVoices)
+                                }
+                                .buttonStyle(.borderless)
+                                .textCase(.none)
+                                .font(.caption)
+                                
+                                Button("Xóa tất cả", role: .destructive) {
+                                    deleteAll(in: systemVoices)
+                                }
+                                .buttonStyle(.borderless)
+                                .textCase(.none)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                            }
+                        }) {
+                            ForEach(systemVoices) { voice in
+                                modelRow(for: voice)
+                            }
+                        }
+                        
+                        let custom = customVoices
+                        if !custom.isEmpty {
+                            Section(header: HStack {
+                                Text("Giọng đọc tùy chỉnh")
+                                Spacer()
+                                Button("Xóa tất cả", role: .destructive) {
+                                    deleteAll(in: custom)
+                                }
+                                .buttonStyle(.borderless)
+                                .textCase(.none)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                            }) {
+                                ForEach(custom) { voice in
+                                    modelRow(for: voice, isCustom: true)
+                                }
+                            }
+                        }
+                    }
+                    .navigationTitle("Quản lý Model")
+                }
+                .tabItem {
+                    Label("Model", systemImage: "arrow.down.circle")
+                }
+                .tag(TabType.model)
+
+                // Tab 3: Từ điển (Màn hình Xóa/Sửa từ trực tiếp)
+                NavigationStack {
+                    DictionaryEditView()
+                }
+                .tabItem {
+                    Label("Từ điển", systemImage: "character.book.closed")
+                }
+                .tag(TabType.dictionary)
+                
+                // Tab 4: Hệ thống
+                NavigationStack {
+                    Form {
+                        let hasNoModels = appState.modelStore.localVoiceIDs.isEmpty
+                        let hasNoDictionary = !appState.modelStore.hasDictionary
+
+                        if hasNoModels || hasNoDictionary {
+                            Section("Cảnh báo hệ thống") {
+                                if hasNoModels {
+                                    HStack {
+                                        Label("Chưa tải model nào", systemImage: "exclamationmark.triangle.fill")
+                                            .foregroundColor(.orange)
+                                        Spacer()
+                                        Button("Thực hiện") {
+                                            activeTab = .model
+                                        }
+                                        .buttonStyle(.bordered)
+                                    }
+                                }
+                                if hasNoDictionary {
+                                    HStack {
+                                        Label("Chưa tải từ điển", systemImage: "exclamationmark.triangle.fill")
+                                            .foregroundColor(.orange)
+                                        Spacer()
+                                        Button("Thực hiện") {
+                                            activeTab = .dictionary
+                                        }
+                                        .buttonStyle(.bordered)
+                                    }
+                                }
+                            }
                         }
 
-                        Text("http://127.0.0.1:17771")
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
+                        Section("Cấu hình") {
+                            Button(action: {
+                                isShowingSettings = true
+                            }) {
+                                Label("Cài đặt", systemImage: "gearshape")
+                            }
+                            .sheet(isPresented: $isShowingSettings) {
+                                SettingsView()
+                            }
+                        }
 
-                        if let lastRequest = appState.server.lastRequest {
-                            Text(lastRequest)
+                        Section("Server") {
+                            HStack {
+                                Text(appState.server.isRunning ? "Đang bật" : "Dừng")
+                                Spacer()
+                                Circle()
+                                    .fill(appState.server.isRunning ? Color.green : Color.gray)
+                                    .frame(width: 10, height: 10)
+                            }
+
+                            Text("http://127.0.0.1:17771")
+                                .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
+
+                            if let lastRequest = appState.server.lastRequest {
+                                Text(lastRequest)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Button(appState.server.isRunning ? "Tắt Server" : "Bật Server") {
+                                if appState.server.isRunning {
+                                    appState.stopServer()
+                                } else {
+                                    appState.startServer()
+                                }
+                            }
+                        }
+                        
+                        Section("Engine") {
+                            Text(appState.ttsService.engineStatus)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
 
-                        Button(appState.server.isRunning ? "Tắt Server" : "Bật Server") {
-                            if appState.server.isRunning {
-                                appState.stopServer()
-                            } else {
-                                appState.startServer()
+                        Section("Logs") {
+                            Button("Xuất logs") {
+                                shareLogFile()
+                            }
+                            
+                            Button("Dọn dẹp logs", role: .destructive) {
+                                AppLogger.shared.clearLogs()
+                                showToast("Đã xóa toàn bộ nhật ký log thành công.", isError: false)
+                            }
+                        }
+
+                        if let error = appState.lastError {
+                            Section("Error") {
+                                Text(error)
+                                    .foregroundStyle(.red)
                             }
                         }
                     }
-                    
-                    Section("Engine") {
-                        Text(appState.ttsService.engineStatus)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    .navigationTitle("Hệ thống")
+                }
+                .tabItem {
+                    Label("Hệ thống", systemImage: "server.rack")
+                }
+                .tag(TabType.system)
+            }
+            .scrollDismissesKeyboard(.immediately)
+            .task {
+                appState.startServer()
+                await loadVoices(forceRefresh: false)
+            }
+            .dismissKeyboardOnTap()
 
-                    Section("Logs") {
-                        Button("Xuất logs") {
-                            shareLogFile()
-                        }
-                        
-                        Button("Dọn dẹp logs", role: .destructive) {
-                            AppLogger.shared.clearLogs()
-                            showToast("Đã xóa toàn bộ nhật ký log thành công.", isError: false)
-                        }
-                    }
+            if let toast = toast {
+                VStack {
+                    Spacer()
 
-                    if let error = appState.lastError {
-                        Section("Error") {
-                            Text(error)
-                                .foregroundStyle(.red)
-                        }
+                    HStack(spacing: 10) {
+                        Image(systemName: toast.isError
+                            ? "exclamationmark.circle.fill"
+                            : "checkmark.circle.fill")
+
+                        Text(toast.message)
+                            .font(.subheadline)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .shadow(radius: 8)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 70) // 👈 né tab bar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .onTapGesture {
+                        dismissToast()
                     }
                 }
-                .navigationTitle("Hệ thống")
-            }
-            .tabItem {
-                Label("Hệ thống", systemImage: "server.rack")
-            }
-            .tag(TabType.system)
-        }
-        .scrollDismissesKeyboard(.immediately)
-        .task {
-            appState.startServer()
-            await loadVoices(forceRefresh: false)
-        }
-        .dismissKeyboardOnTap()
-        .overlay(alignment: .bottom) {
-            if let toast = toast {
-                toastView(toast)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, safeAreaBottomPadding)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(999)
-                    .onTapGesture { dismissToast() }
-                    .animation(.spring(), value: toast)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: toast != nil)
+                .zIndex(999)
             }
         }
-    }
-
-    @ViewBuilder
-    private func toastView(_ toast: ToastConfig) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: toast.isError
-                ? "exclamationmark.circle.fill"
-                : "checkmark.circle.fill")
-
-            Text(toast.message)
-                .font(.subheadline)
-        }
-        .foregroundStyle(.primary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial)
-        .clipShape(Capsule())
-        .shadow(radius: 8)
     }
 
     @ViewBuilder
