@@ -244,7 +244,7 @@ final class ONNXPiperEngine: PiperEngine {
                 "scales": scalesTensor
             ]
             
-            // Hỗ trợ mô hình đa giọng đọc (Multi-speaker) nếu có yêu cầu "sid" (Speaker ID)
+            // Hỗ trợ model đa giọng đọc (Multi-speaker) nếu có yêu cầu "sid" (Speaker ID)
             if inputNames.contains("sid") {
                 let speakerId: Int64 = 0
                 let sidShape: [NSNumber] = [1]

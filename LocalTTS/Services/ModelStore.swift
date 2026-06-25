@@ -6,6 +6,23 @@ final class ModelStore {
     let rootURL: URL
     let modelsURL: URL
     private let voicesCacheURL: URL
+    @Published var localVoiceIDs: [String] = []
+    @Published var hasDictionary = false
+
+    func reloadLocalVoices() {
+        localVoiceIDs = getLocalVoiceIDs()
+    }
+
+    func reloadDictionaryStatus() {
+        hasDictionary =
+            FileManager.default.fileExists(
+                atPath: rootURL.appendingPathComponent("non-vietnamese-words.plist").path
+            )
+            &&
+            FileManager.default.fileExists(
+                atPath: rootURL.appendingPathComponent("acronyms.plist").path
+            )
+    }
 
     init(fileManager: FileManager = .default) throws {
         self.fileManager = fileManager

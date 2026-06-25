@@ -41,7 +41,7 @@ final class PiperTTSService {
         
         // Nếu không chứa ký tự chữ/số nào, tạo khoảng lặng chờ tương đương dấu câu và trả về ngay
         if text.rangeOfCharacter(from: .alphanumerics) == nil {
-            let sampleRate = 22050 // Tần số mẫu mặc định của mô hình
+            let sampleRate = 22050 // Tần số mẫu mặc định của model
             let phrasePause = UserDefaults.standard.double(forKey: "phrasePauseDuration")
             let sentencePause = UserDefaults.standard.double(forKey: "sentencePauseDuration")
             let hasSentencePunct = text.contains(".") || text.contains("!") || text.contains("?")

@@ -49,14 +49,32 @@ struct ContentView: View {
 
     private func showToast(_ message: String, isError: Bool) {
         toastTask?.cancel()
-        withAnimation(.easeInOut(duration: 0.2)) {
-            toast = ToastConfig(message: message, isError: isError)
+
+        if toast != nil {
+            toast = nil
         }
+
+        withAnimation(
+            .spring(
+                response: 0.4,
+                dampingFraction: 0.85
+            )
+        ) {
+            toast = ToastConfig(
+                message: message,
+                isError: isError
+            )
+        }
+
         toastTask = Task {
-            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            try? await Task.sleep(for: .seconds(3))
+
             guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.2)) {
-                toast = nil
+
+            await MainActor.run {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    toast = nil
+                }
             }
         }
     }
@@ -64,7 +82,7 @@ struct ContentView: View {
     private func dismissToast() {
         toastTask?.cancel()
         toastTask = nil
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation(.easeOut(duration: 0.25)) {
             toast = nil
         }
     }
@@ -117,11 +135,11 @@ struct ContentView: View {
                             }
                         }
 
-                        Button("Refresh Voices") {
+                        Button("Làm mới danh sách giọng đọc") {
                             Task { await loadVoices(forceRefresh: true) }
                         }
 
-                        Button("Prefetch Selected Model") {
+                        Button("Tải trước model đã chọn") {
                             Task { await prefetchSelectedVoice() }
                         }
                         .disabled(isDownloadingModel || isLoadingVoices)
@@ -144,7 +162,7 @@ struct ContentView: View {
 
                     Section("Test TTS") {
                         HStack {
-                            TextField("Text to synthesize", text: $testText, axis: .vertical)
+                            TextField("Văn bản cần đọc", text: $testText, axis: .vertical)
                                 .lineLimit(3...10)
                             
                             if !testText.isEmpty {
@@ -170,7 +188,7 @@ struct ContentView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Button(isSynthesizing ? "Synthesizing..." : "Speak") {
+                        Button(isSynthesizing ? "Đang xử lý..." : "Đọc") {
                             Task { await testTTS() }
                         }
                         .disabled(isSynthesizing || testText.trimmed.isEmpty)
@@ -197,23 +215,23 @@ struct ContentView: View {
                             allowedContentTypes: [.data],
                             allowsMultipleSelection: true
                         ) { result in
-                            AppLogger.shared.log("[DEBUG_IMPORT] IMPORTER CALLBACK TRIGGERED")
+                            //AppLogger.shared.log("[DEBUG_IMPORT] IMPORTER CALLBACK TRIGGERED")
                             switch result {
                             case .success(let urls):
-                                AppLogger.shared.log("[DEBUG_IMPORT] SUCCESS: Received \(urls.count) URLs")
+                                //AppLogger.shared.log("[DEBUG_IMPORT] SUCCESS: Received \(urls.count) URLs")
                                 for url in urls {
-                                    AppLogger.shared.log("[DEBUG_IMPORT] - URL: \(url.absoluteString)")
+                                    //AppLogger.shared.log("[DEBUG_IMPORT] - URL: \(url.absoluteString)")
                                     let fileExists = FileManager.default.fileExists(atPath: url.path)
-                                    AppLogger.shared.log("[DEBUG_IMPORT] - File exists check (direct path): \(fileExists)")
+                                    //AppLogger.shared.log("[DEBUG_IMPORT] - File exists check (direct path): \(fileExists)")
                                     
                                     let hasAccess = url.startAccessingSecurityScopedResource()
-                                    AppLogger.shared.log("[DEBUG_IMPORT] - startAccessingSecurityScopedResource: \(hasAccess)")
+                                    //AppLogger.shared.log("[DEBUG_IMPORT] - startAccessingSecurityScopedResource: \(hasAccess)")
                                     
                                     do {
                                         let data = try Data(contentsOf: url)
-                                        AppLogger.shared.log("[DEBUG_IMPORT] - Read data success: \(data.count) bytes")
+                                        //AppLogger.shared.log("[DEBUG_IMPORT] - Read data success: \(data.count) bytes")
                                     } catch {
-                                        AppLogger.shared.log("[DEBUG_IMPORT] - Read data failed: \(error.localizedDescription)")
+                                        //AppLogger.shared.log("[DEBUG_IMPORT] - Read data failed: \(error.localizedDescription)")
                                     }
                                     
                                     if hasAccess {
@@ -226,18 +244,18 @@ struct ContentView: View {
                                     return ext == "onnx" || ext == "json"
                                 }
                                 if validURLs.isEmpty {
-                                    showToast("Vui lòng chọn tệp tin mô hình (.onnx) hoặc cấu hình (.json).", isError: true)
+                                    showToast("Vui lòng chọn tệp tin model (.onnx) hoặc cấu hình (.json).", isError: true)
                                 } else {
                                     let urlsWithAccess = validURLs.map { url in
                                         (url: url, hasAccess: url.startAccessingSecurityScopedResource())
                                     }
-                                    AppLogger.shared.log("[DEBUG_IMPORT] ABOUT TO START IMPORT TASK")
+                                    //AppLogger.shared.log("[DEBUG_IMPORT] ABOUT TO START IMPORT TASK")
                                     Task {
                                         await importModels(from: urlsWithAccess)
                                     }
                                 }
                             case .failure(let error):
-                                AppLogger.shared.log("[DEBUG_IMPORT] FAILURE: \(error.localizedDescription)")
+                                //AppLogger.shared.log("[DEBUG_IMPORT] FAILURE: \(error.localizedDescription)")
                                 appState.lastError = "Import failed: \(error.localizedDescription)"
                             }
                         }
@@ -331,8 +349,8 @@ struct ContentView: View {
             // Tab 4: Hệ thống
             NavigationStack {
                 Form {
-                    let hasNoModels = appState.modelStore.getLocalVoiceIDs().isEmpty
-                    let hasNoDictionary = !FileManager.default.fileExists(atPath: appState.modelStore.rootURL.appendingPathComponent("non-vietnamese-words.plist").path) || !FileManager.default.fileExists(atPath: appState.modelStore.rootURL.appendingPathComponent("acronyms.plist").path)
+                    let hasNoModels = appState.modelStore.localVoiceIDs.isEmpty
+                    let hasNoDictionary = !appState.modelStore.hasDictionary
 
                     if hasNoModels || hasNoDictionary {
                         Section("Cảnh báo hệ thống") {
@@ -374,7 +392,7 @@ struct ContentView: View {
 
                     Section("Server") {
                         HStack {
-                            Text(appState.server.isRunning ? "Running" : "Stopped")
+                            Text(appState.server.isRunning ? "Đang bật" : "Dừng")
                             Spacer()
                             Circle()
                                 .fill(appState.server.isRunning ? Color.green : Color.gray)
@@ -391,7 +409,7 @@ struct ContentView: View {
                                 .foregroundStyle(.secondary)
                         }
 
-                        Button(appState.server.isRunning ? "Stop Server" : "Start Server") {
+                        Button(appState.server.isRunning ? "Tắt Server" : "Bật Server") {
                             if appState.server.isRunning {
                                 appState.stopServer()
                             } else {
@@ -407,11 +425,11 @@ struct ContentView: View {
                     }
 
                     Section("Logs") {
-                        Button("View Logs") {
+                        Button("Xuất logs") {
                             shareLogFile()
                         }
                         
-                        Button("Clear Logs", role: .destructive) {
+                        Button("Dọn dẹp logs", role: .destructive) {
                             AppLogger.shared.clearLogs()
                             showToast("Đã xóa toàn bộ nhật ký log thành công.", isError: false)
                         }
@@ -437,21 +455,35 @@ struct ContentView: View {
             await loadVoices(forceRefresh: false)
         }
         .dismissKeyboardOnTap()
-        .overlay(alignment: .top) {
+        .safeAreaInset(edge: .bottom) {
             if let toast = toast {
-                Text(toast.message)
-                    .font(.system(.subheadline, design: .rounded))
-                    .foregroundColor(.white)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 16)
-                    .background(toast.isError ? Color.red.opacity(0.9) : Color.black.opacity(0.85))
-                    .cornerRadius(12)
-                    .shadow(color: Color.black.opacity(0.15), radius: 4)
-                    .padding(.top, 10)
-                    .transition(.opacity)
-                    .onTapGesture {
-                        dismissToast()
-                    }
+                HStack(spacing: 10) {
+                    Image(systemName: toast.isError
+                        ? "exclamationmark.circle.fill"
+                        : "checkmark.circle.fill")
+
+                    Text(toast.message)
+                        .font(.subheadline)
+                        .multilineTextAlignment(.leading)
+                }
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.ultraThinMaterial)
+                .clipShape(Capsule())
+                .shadow(radius: 8)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .bottom)
+                            .combined(with: .opacity),
+                        removal: .opacity
+                    )
+                )
+                .onTapGesture {
+                    dismissToast()
+                }
             }
         }
     }
@@ -553,12 +585,12 @@ struct ContentView: View {
         do {
             try appState.modelStore.deleteModel(for: voice.id)
             modelRefreshTrigger += 1
-            showToast("Đã xóa mô hình \(voice.name) thành công.", isError: false)
+            showToast("Đã xóa model \(voice.name) thành công.", isError: false)
             Task {
                 await loadVoices(forceRefresh: false)
             }
         } catch {
-            showToast("Lỗi xóa mô hình \(voice.name): \(error.localizedDescription)", isError: true)
+            showToast("Lỗi xóa model \(voice.name): \(error.localizedDescription)", isError: true)
             appState.lastError = "Lỗi xóa model \(voice.name): \(error.localizedDescription)"
         }
     }
@@ -627,7 +659,7 @@ struct ContentView: View {
     }
 
     private func importModels(from urlsWithAccess: [(url: URL, hasAccess: Bool)]) async {
-        AppLogger.shared.log("[DEBUG_IMPORT] ENTER importModels")
+        //AppLogger.shared.log("[DEBUG_IMPORT] ENTER importModels")
         let fm = FileManager.default
         var importCount = 0
         var errorCount = 0
@@ -651,7 +683,7 @@ struct ContentView: View {
                 if ext == "onnx" {
                     let voiceId = url.deletingPathExtension().lastPathComponent.toASCIIID
                     guard !voiceId.isEmpty else {
-                        throw NSError(domain: "ContentView", code: 1, userInfo: [NSLocalizedDescriptionKey: "ID mô hình không hợp lệ."])
+                        throw NSError(domain: "ContentView", code: 1, userInfo: [NSLocalizedDescriptionKey: "ID model không hợp lệ."])
                     }
                     resolvedTarget = appState.modelStore.modelURL(for: voiceId, extension: "onnx")
                 } else if ext == "json" {
@@ -679,7 +711,7 @@ struct ContentView: View {
                     let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
                     let fileSize = resourceValues.fileSize ?? 0
                     if fileSize < 1_000_000 {
-                        throw NSError(domain: "ContentView", code: 4, userInfo: [NSLocalizedDescriptionKey: "Kích thước tệp mô hình quá nhỏ (\(fileSize) bytes). Có thể tệp đã bị hỏng."])
+                        throw NSError(domain: "ContentView", code: 4, userInfo: [NSLocalizedDescriptionKey: "Kích thước tệp model quá nhỏ (\(fileSize) bytes). Có thể tệp đã bị hỏng."])
                     }
                 } else if ext == "json" {
                     let data = try Data(contentsOf: url)
@@ -710,7 +742,7 @@ struct ContentView: View {
         await loadVoices(forceRefresh: false)
         
         if errorCount > 0 {
-            showToast("Lỗi nhập \(errorCount) tệp mô hình/cấu hình. Vui lòng thử lại.", isError: true)
+            showToast("Lỗi nhập \(errorCount) tệp model/cấu hình. Vui lòng thử lại.", isError: true)
         } else if importCount > 0 {
             showToast("Đã nhập thành công \(importCount) tệp tin.", isError: false)
         }
@@ -819,11 +851,11 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Preprocess") {
-                    Toggle("Normalize numbers", isOn: $preprocessorNumericNormalizationEnabled)
-                    Toggle("Replace dictionary words", isOn: $preprocessorDictionaryReplacementEnabled)
-                    Toggle("Transliterate EN/JP", isOn: $preprocessorTransliterationEnabled)
-                    Toggle("Debug preprocess logs", isOn: $preprocessorDebugLoggingEnabled)
+                Section("Tiền xử lý text") {
+                    Toggle("Chuẩn hóa cách đọc số", isOn: $preprocessorNumericNormalizationEnabled)
+                    Toggle("Áp dụng thay thế từ điển", isOn: $preprocessorDictionaryReplacementEnabled)
+                    Toggle("Phiên âm tiếng Anh/Nhật", isOn: $preprocessorTransliterationEnabled)
+                    Toggle("Ghi nhật ký gỡ lỗi", isOn: $preprocessorDebugLoggingEnabled)
                 }
                 
                 Section("Cấu hình khoảng ngắt (giây)") {
@@ -965,14 +997,32 @@ struct DictionaryEditView: View {
 
     private func showToast(_ message: String, isError: Bool) {
         toastTask?.cancel()
-        withAnimation(.easeInOut(duration: 0.3)) {
-            toast = ToastConfig(message: message, isError: isError)
+
+        if toast != nil {
+            toast = nil
         }
+
+        withAnimation(
+            .spring(
+                response: 0.4,
+                dampingFraction: 0.85
+            )
+        ) {
+            toast = ToastConfig(
+                message: message,
+                isError: isError
+            )
+        }
+
         toastTask = Task {
-            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            try? await Task.sleep(for: .seconds(3))
+
             guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.3)) {
-                toast = nil
+
+            await MainActor.run {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    toast = nil
+                }
             }
         }
     }
@@ -980,7 +1030,7 @@ struct DictionaryEditView: View {
     private func dismissToast() {
         toastTask?.cancel()
         toastTask = nil
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(.easeOut(duration: 0.25)) {
             toast = nil
         }
     }
@@ -1118,22 +1168,22 @@ struct DictionaryEditView: View {
                         allowedContentTypes: [.data],
                         allowsMultipleSelection: false
                     ) { result in
-                        AppLogger.shared.log("[DEBUG_DICT] IMPORTER CALLBACK TRIGGERED")
+                        //AppLogger.shared.log("[DEBUG_DICT] IMPORTER CALLBACK TRIGGERED")
                         switch result {
                         case .success(let urls):
                             guard let selectedURL = urls.first else { return }
-                            AppLogger.shared.log("[DEBUG_DICT] SUCCESS: Selected URL: \(selectedURL.absoluteString)")
+                            //AppLogger.shared.log("[DEBUG_DICT] SUCCESS: Selected URL: \(selectedURL.absoluteString)")
                             let fileExists = FileManager.default.fileExists(atPath: selectedURL.path)
-                            AppLogger.shared.log("[DEBUG_DICT] - File exists check (direct path): \(fileExists)")
+                            //AppLogger.shared.log("[DEBUG_DICT] - File exists check (direct path): \(fileExists)")
                             
                             let hasAccess = selectedURL.startAccessingSecurityScopedResource()
-                            AppLogger.shared.log("[DEBUG_DICT] - startAccessingSecurityScopedResource: \(hasAccess)")
+                            //AppLogger.shared.log("[DEBUG_DICT] - startAccessingSecurityScopedResource: \(hasAccess)")
                             
                             do {
                                 let data = try Data(contentsOf: selectedURL)
-                                AppLogger.shared.log("[DEBUG_DICT] - Read data success: \(data.count) bytes")
+                                //AppLogger.shared.log("[DEBUG_DICT] - Read data success: \(data.count) bytes")
                             } catch {
-                                AppLogger.shared.log("[DEBUG_DICT] - Read data failed: \(error.localizedDescription)")
+                                //AppLogger.shared.log("[DEBUG_DICT] - Read data failed: \(error.localizedDescription)")
                             }
                             
                             let ext = selectedURL.pathExtension.lowercased()
@@ -1143,11 +1193,11 @@ struct DictionaryEditView: View {
                                     selectedURL.stopAccessingSecurityScopedResource()
                                 }
                             } else {
-                                AppLogger.shared.log("[DEBUG_DICT] ABOUT TO CALL importDictionary")
+                                //AppLogger.shared.log("[DEBUG_DICT] ABOUT TO CALL importDictionary")
                                 importDictionary(from: selectedURL, hasAccess: hasAccess)
                             }
                         case .failure(let error):
-                            AppLogger.shared.log("[DEBUG_DICT] FAILURE: \(error.localizedDescription)")
+                            //AppLogger.shared.log("[DEBUG_DICT] FAILURE: \(error.localizedDescription)")
                             showToast("Lỗi chọn tệp: \(error.localizedDescription)", isError: true)
                         }
                     }
@@ -1190,21 +1240,35 @@ struct DictionaryEditView: View {
         .task {
             await loadDictionary()
         }
-        .overlay(alignment: .top) {
+        .safeAreaInset(edge: .bottom) {
             if let toast = toast {
-                Text(toast.message)
-                    .font(.system(.subheadline, design: .rounded))
-                    .foregroundColor(.white)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 16)
-                    .background(toast.isError ? Color.red.opacity(0.9) : Color.black.opacity(0.85))
-                    .cornerRadius(12)
-                    .shadow(color: Color.black.opacity(0.15), radius: 4)
-                    .padding(.top, 10)
-                    .transition(.opacity)
-                    .onTapGesture {
-                        dismissToast()
-                    }
+                HStack(spacing: 10) {
+                    Image(systemName: toast.isError
+                        ? "exclamationmark.circle.fill"
+                        : "checkmark.circle.fill")
+
+                    Text(toast.message)
+                        .font(.subheadline)
+                        .multilineTextAlignment(.leading)
+                }
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.ultraThinMaterial)
+                .clipShape(Capsule())
+                .shadow(radius: 8)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .bottom)
+                            .combined(with: .opacity),
+                        removal: .opacity
+                    )
+                )
+                .onTapGesture {
+                    dismissToast()
+                }
             }
         }
     }
@@ -1328,7 +1392,7 @@ struct DictionaryEditView: View {
     }
 
     private func importDictionary(from url: URL, hasAccess: Bool) {
-        AppLogger.shared.log("[DEBUG_DICT] ENTER importDictionary")
+        //AppLogger.shared.log("[DEBUG_DICT] ENTER importDictionary")
         isLoading = true
         Task {
             defer {

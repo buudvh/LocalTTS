@@ -1785,52 +1785,52 @@ final actor TextPreprocessor {
         Self.preprocessLog("📝 [Vietnamese Normalizer] Starting preprocess for text: '\(text)'")
         var e = text
 
-        Self.preprocessLog("   - Running precomposedStringWithCanonicalMapping")
+        //Self.preprocessLog("   - Running precomposedStringWithCanonicalMapping")
         e = text.precomposedStringWithCanonicalMapping
 
-        Self.preprocessLog("   - Running cleanText")
+        //Self.preprocessLog("   - Running cleanText")
         e = cleanText(e)
 
-        Self.preprocessLog("   - Running normalizeQuotesAndDashes")
+        //Self.preprocessLog("   - Running normalizeQuotesAndDashes")
         e = normalizeQuotesAndDashes(e)
 
         if config.numericNormalizationEnabled {
-        Self.preprocessLog("   - Running formatNumbers")
+        //Self.preprocessLog("   - Running formatNumbers")
         e = formatNumbers(e)
 
-        Self.preprocessLog("   - Running processUnitsRangeAndRatio")
+        //Self.preprocessLog("   - Running processUnitsRangeAndRatio")
         e = processUnitsRangeAndRatio(e)
 
-        Self.preprocessLog("   - Running processYearRanges")
+        //Self.preprocessLog("   - Running processYearRanges")
         e = processYearRanges(e)
 
-        Self.preprocessLog("   - Running processDates")
+        //Self.preprocessLog("   - Running processDates")
         e = processDates(e)
 
-        Self.preprocessLog("   - Running processTime")
+        //Self.preprocessLog("   - Running processTime")
         e = processTime(e)
 
-        Self.preprocessLog("   - Running processRomanNumerals")
+        //Self.preprocessLog("   - Running processRomanNumerals")
         e = processRomanNumerals(e, unlimited: unlimitedRoman)
 
 
 
-        Self.preprocessLog("   - Running processCurrency")
+        //Self.preprocessLog("   - Running processCurrency")
         e = processCurrency(e)
 
-        Self.preprocessLog("   - Running processPercentages")
+        //Self.preprocessLog("   - Running processPercentages")
         e = processPercentages(e)
 
-        Self.preprocessLog("   - Running processPhoneNumbers")
+        //Self.preprocessLog("   - Running processPhoneNumbers")
         e = processPhoneNumbers(e)
 
-        Self.preprocessLog("   - Running processDecimals")
+        //Self.preprocessLog("   - Running processDecimals")
         e = processDecimals(e)
 
-        Self.preprocessLog("   - Running processUnits")
+        //Self.preprocessLog("   - Running processUnits")
         e = processUnits(e)
 
-        Self.preprocessLog("   - Running processDigits")
+        //Self.preprocessLog("   - Running processDigits")
         e = processDigits(e)
         } else {
             Self.preprocessLog("   - Numeric normalization disabled; skipping number/date/time/currency pipeline")
