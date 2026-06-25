@@ -204,7 +204,8 @@ final class NghiTTSClient {
             throw APIError.badRequest("Invalid voice name: \(voice)")
         }
         let baseStr = baseURL.absoluteString
-        let urlStr = baseStr.hasSuffix("/") ? "\(baseStr)\(encodedVoice).\(ext)" : "\(baseStr)/\(encodedVoice).\(ext)"
+        let prefix = baseStr.hasSuffix("/") ? "\(baseStr)models/" : "\(baseStr)/models/"
+        let urlStr = "\(prefix)\(encodedVoice).\(ext)"
         guard let url = URL(string: urlStr) else {
             throw APIError.badRequest("Invalid URL for voice: \(voice)")
         }

@@ -192,6 +192,55 @@ struct ContentView: View {
                         }) {
                             Label("Nhập Model Ngoài...", systemImage: "square.and.arrow.down")
                         }
+                        .fileImporter(
+                            isPresented: $isShowingFileImporter,
+                            allowedContentTypes: [.data],
+                            allowsMultipleSelection: true
+                        ) { result in
+                            AppLogger.shared.log("[DEBUG_IMPORT] IMPORTER CALLBACK TRIGGERED")
+                            switch result {
+                            case .success(let urls):
+                                AppLogger.shared.log("[DEBUG_IMPORT] SUCCESS: Received \(urls.count) URLs")
+                                for url in urls {
+                                    AppLogger.shared.log("[DEBUG_IMPORT] - URL: \(url.absoluteString)")
+                                    let fileExists = FileManager.default.fileExists(atPath: url.path)
+                                    AppLogger.shared.log("[DEBUG_IMPORT] - File exists check (direct path): \(fileExists)")
+                                    
+                                    let hasAccess = url.startAccessingSecurityScopedResource()
+                                    AppLogger.shared.log("[DEBUG_IMPORT] - startAccessingSecurityScopedResource: \(hasAccess)")
+                                    
+                                    do {
+                                        let data = try Data(contentsOf: url)
+                                        AppLogger.shared.log("[DEBUG_IMPORT] - Read data success: \(data.count) bytes")
+                                    } catch {
+                                        AppLogger.shared.log("[DEBUG_IMPORT] - Read data failed: \(error.localizedDescription)")
+                                    }
+                                    
+                                    if hasAccess {
+                                        url.stopAccessingSecurityScopedResource()
+                                    }
+                                }
+                                
+                                let validURLs = urls.filter {
+                                    let ext = $0.pathExtension.lowercased()
+                                    return ext == "onnx" || ext == "json"
+                                }
+                                if validURLs.isEmpty {
+                                    showToast("Vui lòng chọn tệp tin mô hình (.onnx) hoặc cấu hình (.json).", isError: true)
+                                } else {
+                                    let urlsWithAccess = validURLs.map { url in
+                                        (url: url, hasAccess: url.startAccessingSecurityScopedResource())
+                                    }
+                                    AppLogger.shared.log("[DEBUG_IMPORT] ABOUT TO START IMPORT TASK")
+                                    Task {
+                                        await importModels(from: urlsWithAccess)
+                                    }
+                                }
+                            case .failure(let error):
+                                AppLogger.shared.log("[DEBUG_IMPORT] FAILURE: \(error.localizedDescription)")
+                                appState.lastError = "Import failed: \(error.localizedDescription)"
+                            }
+                        }
                     }
                     
                     Section(header: HStack {
@@ -318,6 +367,9 @@ struct ContentView: View {
                         }) {
                             Label("Cài đặt", systemImage: "gearshape")
                         }
+                        .sheet(isPresented: $isShowingSettings) {
+                            SettingsView()
+                        }
                     }
 
                     Section("Server") {
@@ -383,58 +435,6 @@ struct ContentView: View {
         .task {
             appState.startServer()
             await loadVoices(forceRefresh: false)
-        }
-        .sheet(isPresented: $isShowingSettings) {
-            SettingsView()
-        }
-        .fileImporter(
-            isPresented: $isShowingFileImporter,
-            allowedContentTypes: [.data],
-            allowsMultipleSelection: true
-        ) { result in
-            AppLogger.shared.log("[DEBUG_IMPORT] IMPORTER CALLBACK TRIGGERED")
-            switch result {
-            case .success(let urls):
-                AppLogger.shared.log("[DEBUG_IMPORT] SUCCESS: Received \(urls.count) URLs")
-                for url in urls {
-                    AppLogger.shared.log("[DEBUG_IMPORT] - URL: \(url.absoluteString)")
-                    let fileExists = FileManager.default.fileExists(atPath: url.path)
-                    AppLogger.shared.log("[DEBUG_IMPORT] - File exists check (direct path): \(fileExists)")
-                    
-                    let hasAccess = url.startAccessingSecurityScopedResource()
-                    AppLogger.shared.log("[DEBUG_IMPORT] - startAccessingSecurityScopedResource: \(hasAccess)")
-                    
-                    do {
-                        let data = try Data(contentsOf: url)
-                        AppLogger.shared.log("[DEBUG_IMPORT] - Read data success: \(data.count) bytes")
-                    } catch {
-                        AppLogger.shared.log("[DEBUG_IMPORT] - Read data failed: \(error.localizedDescription)")
-                    }
-                    
-                    if hasAccess {
-                        url.stopAccessingSecurityScopedResource()
-                    }
-                }
-                
-                let validURLs = urls.filter {
-                    let ext = $0.pathExtension.lowercased()
-                    return ext == "onnx" || ext == "json"
-                }
-                if validURLs.isEmpty {
-                    showToast("Vui lòng chọn tệp tin mô hình (.onnx) hoặc cấu hình (.json).", isError: true)
-                } else {
-                    let urlsWithAccess = validURLs.map { url in
-                        (url: url, hasAccess: url.startAccessingSecurityScopedResource())
-                    }
-                    AppLogger.shared.log("[DEBUG_IMPORT] ABOUT TO START IMPORT TASK")
-                    Task {
-                        await importModels(from: urlsWithAccess)
-                    }
-                }
-            case .failure(let error):
-                AppLogger.shared.log("[DEBUG_IMPORT] FAILURE: \(error.localizedDescription)")
-                appState.lastError = "Import failed: \(error.localizedDescription)"
-            }
         }
         .dismissKeyboardOnTap()
         .overlay(alignment: .top) {
@@ -1113,23 +1113,71 @@ struct DictionaryEditView: View {
                     } label: {
                         Image(systemName: "square.and.arrow.down")
                     }
+                    .fileImporter(
+                        isPresented: $showingFileImporter,
+                        allowedContentTypes: [.data],
+                        allowsMultipleSelection: false
+                    ) { result in
+                        AppLogger.shared.log("[DEBUG_DICT] IMPORTER CALLBACK TRIGGERED")
+                        switch result {
+                        case .success(let urls):
+                            guard let selectedURL = urls.first else { return }
+                            AppLogger.shared.log("[DEBUG_DICT] SUCCESS: Selected URL: \(selectedURL.absoluteString)")
+                            let fileExists = FileManager.default.fileExists(atPath: selectedURL.path)
+                            AppLogger.shared.log("[DEBUG_DICT] - File exists check (direct path): \(fileExists)")
+                            
+                            let hasAccess = selectedURL.startAccessingSecurityScopedResource()
+                            AppLogger.shared.log("[DEBUG_DICT] - startAccessingSecurityScopedResource: \(hasAccess)")
+                            
+                            do {
+                                let data = try Data(contentsOf: selectedURL)
+                                AppLogger.shared.log("[DEBUG_DICT] - Read data success: \(data.count) bytes")
+                            } catch {
+                                AppLogger.shared.log("[DEBUG_DICT] - Read data failed: \(error.localizedDescription)")
+                            }
+                            
+                            let ext = selectedURL.pathExtension.lowercased()
+                            if ext != "plist" && ext != "json" && ext != "csv" && ext != "txt" {
+                                showToast("Vui lòng chọn tệp từ điển (.plist, .json, hoặc .csv/.txt).", isError: true)
+                                if hasAccess {
+                                    selectedURL.stopAccessingSecurityScopedResource()
+                                }
+                            } else {
+                                AppLogger.shared.log("[DEBUG_DICT] ABOUT TO CALL importDictionary")
+                                importDictionary(from: selectedURL, hasAccess: hasAccess)
+                            }
+                        case .failure(let error):
+                            AppLogger.shared.log("[DEBUG_DICT] FAILURE: \(error.localizedDescription)")
+                            showToast("Lỗi chọn tệp: \(error.localizedDescription)", isError: true)
+                        }
+                    }
+
                     Button {
                         showingDownloadConfirmation = true
                     } label: {
                         Image(systemName: "arrow.down.to.line")
                     }
+                    .alert("Xác nhận tải lại", isPresented: $showingDownloadConfirmation) {
+                        Button("Hủy", role: .cancel) {}
+                        Button("Tải lại", role: .destructive) {
+                            downloadDictionaries()
+                        }
+                    } message: {
+                        Text("Hành động này sẽ tải lại từ điển gốc từ HuggingFace và ghi đè tất cả các từ vựng tùy chỉnh bạn đã thêm. Bạn có chắc chắn muốn tiếp tục?")
+                    }
+
                     Button {
                         showingAddSheet = true
                     } label: {
                         Image(systemName: "plus")
                     }
+                    .sheet(isPresented: $showingAddSheet) {
+                        AddWordSheet(onAdd: { key, val in
+                            addWord(key: key, value: val)
+                        })
+                    }
                 }
             }
-        }
-        .sheet(isPresented: $showingAddSheet) {
-            AddWordSheet(onAdd: { key, val in
-                addWord(key: key, value: val)
-            })
         }
         .sheet(item: Binding(
             get: { editingKey.map { EditingEntry(key: $0, value: editingValue) } },
@@ -1138,52 +1186,6 @@ struct DictionaryEditView: View {
             EditWordSheet(key: entry.key, value: entry.value) { newVal in
                 updateWord(key: entry.key, value: newVal)
             }
-        }
-        .fileImporter(
-            isPresented: $showingFileImporter,
-            allowedContentTypes: [.data],
-            allowsMultipleSelection: false
-        ) { result in
-            AppLogger.shared.log("[DEBUG_DICT] IMPORTER CALLBACK TRIGGERED")
-            switch result {
-            case .success(let urls):
-                guard let selectedURL = urls.first else { return }
-                AppLogger.shared.log("[DEBUG_DICT] SUCCESS: Selected URL: \(selectedURL.absoluteString)")
-                let fileExists = FileManager.default.fileExists(atPath: selectedURL.path)
-                AppLogger.shared.log("[DEBUG_DICT] - File exists check (direct path): \(fileExists)")
-                
-                let hasAccess = selectedURL.startAccessingSecurityScopedResource()
-                AppLogger.shared.log("[DEBUG_DICT] - startAccessingSecurityScopedResource: \(hasAccess)")
-                
-                do {
-                    let data = try Data(contentsOf: selectedURL)
-                    AppLogger.shared.log("[DEBUG_DICT] - Read data success: \(data.count) bytes")
-                } catch {
-                    AppLogger.shared.log("[DEBUG_DICT] - Read data failed: \(error.localizedDescription)")
-                }
-                
-                let ext = selectedURL.pathExtension.lowercased()
-                if ext != "plist" && ext != "json" && ext != "csv" && ext != "txt" {
-                    showToast("Vui lòng chọn tệp từ điển (.plist, .json, hoặc .csv/.txt).", isError: true)
-                    if hasAccess {
-                        selectedURL.stopAccessingSecurityScopedResource()
-                    }
-                } else {
-                    AppLogger.shared.log("[DEBUG_DICT] ABOUT TO CALL importDictionary")
-                    importDictionary(from: selectedURL, hasAccess: hasAccess)
-                }
-            case .failure(let error):
-                AppLogger.shared.log("[DEBUG_DICT] FAILURE: \(error.localizedDescription)")
-                showToast("Lỗi chọn tệp: \(error.localizedDescription)", isError: true)
-            }
-        }
-        .alert("Xác nhận tải lại", isPresented: $showingDownloadConfirmation) {
-            Button("Hủy", role: .cancel) {}
-            Button("Tải lại", role: .destructive) {
-                downloadDictionaries()
-            }
-        } message: {
-            Text("Hành động này sẽ tải lại từ điển gốc từ HuggingFace và ghi đè tất cả các từ vựng tùy chỉnh bạn đã thêm. Bạn có chắc chắn muốn tiếp tục?")
         }
         .task {
             await loadDictionary()
