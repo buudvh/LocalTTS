@@ -12,6 +12,7 @@ enum TabType: Hashable {
 @MainActor
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
+    @StateObject var modelStore = ModelStore()
     @State private var voices: [Voice] = []
     @State private var isLoadingVoices = false
     @State private var selectedVoice = NghiTTSClient.defaultVietnameseVoice
@@ -339,8 +340,8 @@ struct ContentView: View {
                 // Tab 4: Hệ thống
                 NavigationStack {
                     Form {
-                        let hasNoModels = appState.modelStore.localVoiceIDs.isEmpty
-                        let hasNoDictionary = !appState.modelStore.hasDictionary
+                        let hasNoModels = modelStore.localVoiceIDs.isEmpty
+                        let hasNoDictionary = !modelStore.hasDictionary
 
                         if hasNoModels || hasNoDictionary {
                             Section("Cảnh báo hệ thống") {

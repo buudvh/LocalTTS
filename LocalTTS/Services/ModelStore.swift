@@ -9,10 +9,12 @@ final class ModelStore: ObservableObject {
     @Published var localVoiceIDs: [String] = []
     @Published var hasDictionary = false
 
+    @MainActor
     func reloadLocalVoices() {
         localVoiceIDs = getLocalVoiceIDs()
     }
 
+    @MainActor
     func reloadDictionaryStatus() {
         hasDictionary =
             FileManager.default.fileExists(
