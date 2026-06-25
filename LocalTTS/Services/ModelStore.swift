@@ -1,48 +1,24 @@
 import Foundation
 
 
-final class ModelStore: ObservableObject {
+final class ModelStore {
     private let fileManager: FileManager
     let rootURL: URL
     let modelsURL: URL
     private let voicesCacheURL: URL
-    @Published var localVoiceIDs: [String] = []
-    @Published var hasDictionary = false
 
-    @MainActor
-    func reloadLocalVoices() {
-        localVoiceIDs = getLocalVoiceIDs()
-    }
-
-    @MainActor
-    func reloadDictionaryStatus() {
-        hasDictionary =
-            FileManager.default.fileExists(
-                atPath: rootURL.appendingPathComponent("non-vietnamese-words.plist").path
-            )
-            &&
-            FileManager.default.fileExists(
-                atPath: rootURL.appendingPathComponent("acronyms.plist").path
-            )
-    }
-
-    init(fileManager: FileManager = .default) {
+    init(fileManager: FileManager = .default) throws {
         self.fileManager = fileManager
-
-        let appSupport = try? fileManager.url(
+        let appSupport = try fileManager.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
         )
-
-        let base = appSupport ?? fileManager.temporaryDirectory
-
-        self.rootURL = base.appendingPathComponent("LocalTTS", isDirectory: true)
+        self.rootURL = appSupport.appendingPathComponent("LocalTTS", isDirectory: true)
         self.modelsURL = rootURL.appendingPathComponent("Models", isDirectory: true)
         self.voicesCacheURL = rootURL.appendingPathComponent("voices.json")
-
-        try? fileManager.createDirectory(at: modelsURL, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: modelsURL, withIntermediateDirectories: true)
     }
 
     func cacheSummary() -> CacheSummary {

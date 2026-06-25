@@ -12,7 +12,6 @@ enum TabType: Hashable {
 @MainActor
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
-    @StateObject var modelStore = ModelStore()
     @State private var voices: [Voice] = []
     @State private var isLoadingVoices = false
     @State private var selectedVoice = NghiTTSClient.defaultVietnameseVoice
@@ -340,8 +339,9 @@ struct ContentView: View {
                 // Tab 4: Hệ thống
                 NavigationStack {
                     Form {
-                        let hasNoModels = modelStore.localVoiceIDs.isEmpty
-                        let hasNoDictionary = !modelStore.hasDictionary
+                        let hasNoModels = appState.modelStore.getLocalVoiceIDs().isEmpty
+                        let hasNoDictionary = !FileManager.default.fileExists(atPath: appState.modelStore.rootURL.appendingPathComponent("non-vietnamese-words.plist").path) 
+                        || !FileManager.default.fileExists(atPath: appState.modelStore.rootURL.appendingPathComponent("acronyms.plist").path)
 
                         if hasNoModels || hasNoDictionary {
                             Section("Cảnh báo hệ thống") {
