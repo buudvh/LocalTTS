@@ -47,6 +47,12 @@ struct ContentView: View {
         let isError: Bool
     }
 
+    @Environment(\.safeAreaInsets) private var safeAreaInsets
+
+    private var safeAreaBottomPadding: CGFloat {
+        safeAreaInsets.bottom + 12
+    }
+
     private func showToast(_ message: String, isError: Bool) {
         toastTask?.cancel()
 
@@ -453,12 +459,13 @@ struct ContentView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .zIndex(999)
                     .onTapGesture { dismissToast() }
+                    .animation(.spring(), value: toast)
             }
         }
     }
 
     @ViewBuilder
-    private func toastView(_ toast: Toast) -> some View {
+    private func toastView(_ toast: ToastConfig) -> some View {
         HStack(spacing: 10) {
             Image(systemName: toast.isError
                 ? "exclamationmark.circle.fill"
