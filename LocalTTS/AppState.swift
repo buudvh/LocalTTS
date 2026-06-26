@@ -11,6 +11,7 @@ final class AppState: ObservableObject {
     private let keepAlive = BackgroundKeepAlive()
 
     @Published var lastError: String?
+    @Published var dictionaryRefreshTrigger = 0
     private var cancellables: Set<AnyCancellable> = []
 
     init() {
@@ -57,5 +58,9 @@ final class AppState: ObservableObject {
         } else {
             keepAlive.stop()
         }
+    }
+
+    func notifyDictionaryChanged() {
+        dictionaryRefreshTrigger += 1
     }
 }
