@@ -52,6 +52,7 @@
 		000000000000000000000216 /* ONNXPiperEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ONNXPiperEngine.swift; sourceTree = "<group>"; };
 		000000000000000000000217 /* TextPreprocessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextPreprocessor.swift; sourceTree = "<group>"; };
 		000000000000000000000218 /* BackgroundTaskSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTaskSession.swift; sourceTree = "<group>"; };
+		000000000000000000000219 /* DocumentPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPicker.swift; sourceTree = "<group>"; };
 
 		00000000000000000000021B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		000000000000000000000301 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
