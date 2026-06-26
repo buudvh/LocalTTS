@@ -210,81 +210,6 @@ struct ContentView: View {
                             }) {
                                 Label("Nhập Model Ngoài...", systemImage: "square.and.arrow.down")
                             }
-                            .sheet(isPresented: $isShowingFileImporter) {
-                                DocumentPicker(
-                                    allowedContentTypes: [.item],
-                                    allowsMultipleSelection: true,
-                                    onPick: { urls in
-                                        let validURLs = urls.filter {
-                                            let ext = $0.pathExtension.lowercased()
-                                            return ext == "onnx" || ext == "json"
-                                        }
-                                        if validURLs.isEmpty {
-                                            showToast("Vui lòng chọn tệp tin model (.onnx) và cấu hình (.json).", isError: true)
-                                            isShowingFileImporter = false
-                                            return
-                                        }
-
-                                        let onnxURLs = validURLs.filter { $0.pathExtension.lowercased() == "onnx" }
-                                        let jsonURLs = validURLs.filter { $0.pathExtension.lowercased() == "json" }
-
-                                        if onnxURLs.isEmpty || jsonURLs.isEmpty {
-                                            showToast("Cần chọn cả hai tệp .onnx và .json cho model. Vui lòng thử lại.", isError: true)
-                                            isShowingFileImporter = false
-                                            return
-                                        }
-
-                                        func voiceId(for url: URL) -> String {
-                                            let baseName = url.deletingPathExtension().lastPathComponent
-                                            if url.pathExtension.lowercased() == "json", baseName.lowercased().hasSuffix(".onnx") {
-                                                return String(baseName.dropLast(5)).toASCIIID
-                                            }
-                                            return baseName.toASCIIID
-                                        }
-
-                                        let jsonById = Dictionary(uniqueKeysWithValues: jsonURLs.compactMap { url in
-                                            let id = voiceId(for: url)
-                                            return id.isEmpty ? nil : (id, url)
-                                        })
-
-                                        var pairedFiles: [(onnxURL: URL, jsonURL: URL, voiceId: String)] = []
-                                        var missingJSON: [String] = []
-                                        for onnxURL in onnxURLs {
-                                            let id = voiceId(for: onnxURL)
-                                            if let jsonURL = jsonById[id] {
-                                                pairedFiles.append((onnxURL: onnxURL, jsonURL: jsonURL, voiceId: id))
-                                            } else {
-                                                missingJSON.append(onnxURL.lastPathComponent)
-                                            }
-                                        }
-
-                                        if !missingJSON.isEmpty {
-                                            showToast("Thiếu tệp .json tương ứng cho: \(missingJSON.joined(separator: ", ")).", isError: true)
-                                            isShowingFileImporter = false
-                                            return
-                                        }
-
-                                        let pairsWithAccess = pairedFiles.map { pair in
-                                            (
-                                                onnxURL: pair.onnxURL,
-                                                onnxAccess: pair.onnxURL.startAccessingSecurityScopedResource(),
-                                                jsonURL: pair.jsonURL,
-                                                jsonAccess: pair.jsonURL.startAccessingSecurityScopedResource(),
-                                                voiceId: pair.voiceId
-                                            )
-                                        }
-
-                                        isShowingFileImporter = false
-                                        showToast("Đang nhập model...", isError: false)
-                                        Task {
-                                            await importModels(from: pairsWithAccess)
-                                        }
-                                    },
-                                    onCancel: {
-                                        isShowingFileImporter = false
-                                    }
-                                )
-                            }
                         }
                         
                         Section(header: HStack {
@@ -357,6 +282,17 @@ struct ContentView: View {
                         }
                     }
                     .navigationTitle("Quản lý Model")
+                    .background {
+                        DocumentPickerPresenter(
+                            isPresented: $isShowingFileImporter,
+                            allowedContentTypes: [.onnx, .json],
+                            allowsMultipleSelection: true,
+                            onPick: { urls in
+                                handleModelImportPick(urls: urls)
+                            },
+                            onCancel: nil
+                        )
+                    }
                 }
                 .tabItem {
                     Label("Model", systemImage: "arrow.down.circle")
@@ -487,11 +423,8 @@ struct ContentView: View {
                 await loadVoices(forceRefresh: false)
             }
             .dismissKeyboardOnTap()
-
-            if let toast = toast {
-                VStack {
-                    Spacer()
-
+            .safeAreaInset(edge: .bottom) {
+                if let toast = toast {
                     HStack(spacing: 10) {
                         Image(systemName: toast.isError
                             ? "exclamationmark.circle.fill"
@@ -499,15 +432,22 @@ struct ContentView: View {
 
                         Text(toast.message)
                             .font(.subheadline)
+                            .multilineTextAlignment(.leading)
                     }
+                    .foregroundStyle(.primary)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .background(.ultraThinMaterial)
                     .clipShape(Capsule())
                     .shadow(radius: 8)
                     .padding(.horizontal, 20)
-                    .padding(.bottom, 70) // 👈 né tab bar
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 8)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .bottom).combined(with: .opacity),
+                            removal: .opacity
+                        )
+                    )
                     .onTapGesture {
                         dismissToast()
                     }
@@ -708,13 +648,100 @@ struct ContentView: View {
         }
     }
 
-    private func importModels(from pairs: [(onnxURL: URL, onnxAccess: Bool, jsonURL: URL, jsonAccess: Bool, voiceId: String)]) async {
-        isImportingModel = true
-        defer { isImportingModel = false }
+    private typealias ModelImportPair = (
+        onnxURL: URL,
+        onnxAccess: Bool,
+        jsonURL: URL,
+        jsonAccess: Bool,
+        voiceId: String
+    )
 
+    private func handleModelImportPick(urls: [URL]) {
+        let validURLs = urls.filter {
+            let ext = $0.pathExtension.lowercased()
+            return ext == "onnx" || ext == "json"
+        }
+        if validURLs.isEmpty {
+            reportImportError("Vui lòng chọn tệp tin model (.onnx) và cấu hình (.json).")
+            return
+        }
+
+        let onnxURLs = validURLs.filter { $0.pathExtension.lowercased() == "onnx" }
+        let jsonURLs = validURLs.filter { $0.pathExtension.lowercased() == "json" }
+
+        if onnxURLs.isEmpty || jsonURLs.isEmpty {
+            reportImportError("Cần chọn cả hai tệp .onnx và .json cho model. Vui lòng thử lại.")
+            return
+        }
+
+        func voiceId(for url: URL) -> String {
+            let baseName = url.deletingPathExtension().lastPathComponent
+            if url.pathExtension.lowercased() == "json", baseName.lowercased().hasSuffix(".onnx") {
+                return String(baseName.dropLast(5)).toASCIIID
+            }
+            return baseName.toASCIIID
+        }
+
+        let jsonById = Dictionary(uniqueKeysWithValues: jsonURLs.compactMap { url in
+            let id = voiceId(for: url)
+            return id.isEmpty ? nil : (id, url)
+        })
+
+        var pairedFiles: [(onnxURL: URL, jsonURL: URL, voiceId: String)] = []
+        var missingJSON: [String] = []
+        for onnxURL in onnxURLs {
+            let id = voiceId(for: onnxURL)
+            if let jsonURL = jsonById[id] {
+                pairedFiles.append((onnxURL: onnxURL, jsonURL: jsonURL, voiceId: id))
+            } else {
+                missingJSON.append(onnxURL.lastPathComponent)
+            }
+        }
+
+        if !missingJSON.isEmpty {
+            reportImportError("Thiếu tệp .json tương ứng cho: \(missingJSON.joined(separator: ", ")).")
+            return
+        }
+
+        let pairsWithAccess = pairedFiles.map { pair in
+            (
+                onnxURL: pair.onnxURL,
+                onnxAccess: pair.onnxURL.startAccessingSecurityScopedResource(),
+                jsonURL: pair.jsonURL,
+                jsonAccess: pair.jsonURL.startAccessingSecurityScopedResource(),
+                voiceId: pair.voiceId
+            )
+        }
+
+        isImportingModel = true
+        importModelMessage = "Đang nhập model..."
+        showToast("Đang nhập model...", isError: false)
+
+        let result = performModelImportSync(from: pairsWithAccess)
+        isImportingModel = false
+
+        modelRefreshTrigger += 1
+        Task {
+            await finishModelImport(result: result, modelCount: pairsWithAccess.count)
+        }
+    }
+
+    private func reportImportError(_ message: String) {
+        appState.lastError = message
+        showToast(message, isError: true)
+    }
+
+    private struct ModelImportResult {
+        let importCount: Int
+        let errorCount: Int
+        let lastErrorMessage: String?
+    }
+
+    private func performModelImportSync(from pairs: [ModelImportPair]) -> ModelImportResult {
         let fm = FileManager.default
         var importCount = 0
         var errorCount = 0
+        var lastErrorMessage: String?
 
         for pair in pairs {
             let onnxURL = pair.onnxURL
@@ -736,7 +763,7 @@ struct ContentView: View {
             ]
 
             for item in targets {
-                var cleanupURL: URL? = nil
+                var cleanupURL: URL?
                 do {
                     let resourceValues = try item.source.resourceValues(forKeys: [.fileSizeKey])
                     let fileSize = resourceValues.fileSize ?? 0
@@ -759,7 +786,9 @@ struct ContentView: View {
                     try streamCopy(from: item.source, to: item.destination)
                     importCount += 1
                 } catch {
-                    appLog("Failed to import file \(item.source.lastPathComponent): \(error.localizedDescription)")
+                    let message = error.localizedDescription
+                    appLog("Failed to import file \(item.source.lastPathComponent): \(message)")
+                    lastErrorMessage = message
                     if let cleanupURL = cleanupURL, fm.fileExists(atPath: cleanupURL.path) {
                         try? fm.removeItem(at: cleanupURL)
                     }
@@ -769,16 +798,30 @@ struct ContentView: View {
         }
 
         appLog("Imported \(importCount) files. Errors: \(errorCount)")
-        modelRefreshTrigger += 1
+        return ModelImportResult(
+            importCount: importCount,
+            errorCount: errorCount,
+            lastErrorMessage: lastErrorMessage
+        )
+    }
+
+    private func finishModelImport(result: ModelImportResult, modelCount: Int) async {
         await loadVoices(forceRefresh: false)
 
-        if errorCount > 0 {
-            showToast("Lỗi nhập model/cấu hình. Vui lòng kiểm tra lại các cặp .onnx và .json.", isError: true)
-        } else if importCount > 0 {
-            showToast("Đã nhập thành công \(pairs.count) model.", isError: false)
+        if result.errorCount > 0 {
+            let message = "Lỗi nhập model/cấu hình. Vui lòng kiểm tra lại các cặp .onnx và .json."
+            appState.lastError = result.lastErrorMessage ?? message
+            showToast(message, isError: true)
+        } else if result.importCount > 0 {
+            appState.lastError = nil
+            showToast("Đã nhập thành công \(modelCount) model.", isError: false)
+        } else {
+            let message = "Không thể nhập model. Vui lòng kiểm tra lại tệp đã chọn."
+            appState.lastError = message
+            showToast(message, isError: true)
         }
     }
-    
+
     private func streamCopy(from sourceURL: URL, to destinationURL: URL) throws {
         guard let inputStream = InputStream(url: sourceURL) else {
             throw NSError(domain: "StreamCopy", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to open input stream for \(sourceURL.lastPathComponent)"])
@@ -1629,14 +1672,5 @@ struct EditWordSheet: View {
                 }
             }
         }
-    }
-}
-
-extension UTType {
-    static var onnx: UTType {
-        if let utType = UTType(filenameExtension: "onnx", conformingTo: .data) {
-            return utType
-        }
-        return UTType(exportedAs: "com.onnxruntime.onnx")
     }
 }
