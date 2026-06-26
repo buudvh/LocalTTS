@@ -29,6 +29,8 @@ struct ContentView: View {
     @State private var isDownloadingModel = false
     @State private var downloadProgressValue: Double = 0.0
     @State private var downloadMessage = ""
+    @State private var isImportingModel = false
+    @State private var importModelMessage = "Đang nhập model..."
     
     // Tab navigation and refresh trigger
     @State private var activeTab: TabType = .tts
@@ -210,7 +212,7 @@ struct ContentView: View {
                             }
                             .sheet(isPresented: $isShowingFileImporter) {
                                 DocumentPicker(
-                                    allowedContentTypes: [.data],
+                                    allowedContentTypes: [.item],
                                     allowsMultipleSelection: true,
                                     onPick: { urls in
                                         let validURLs = urls.filter {
@@ -218,15 +220,64 @@ struct ContentView: View {
                                             return ext == "onnx" || ext == "json"
                                         }
                                         if validURLs.isEmpty {
-                                            showToast("Vui lòng chọn tệp tin model (.onnx) hoặc cấu hình (.json).", isError: true)
+                                            showToast("Vui lòng chọn tệp tin model (.onnx) và cấu hình (.json).", isError: true)
+                                            isShowingFileImporter = false
                                             return
                                         }
 
-                                        let urlsWithAccess = validURLs.map { url in
-                                            (url: url, hasAccess: url.startAccessingSecurityScopedResource())
+                                        let onnxURLs = validURLs.filter { $0.pathExtension.lowercased() == "onnx" }
+                                        let jsonURLs = validURLs.filter { $0.pathExtension.lowercased() == "json" }
+
+                                        if onnxURLs.isEmpty || jsonURLs.isEmpty {
+                                            showToast("Cần chọn cả hai tệp .onnx và .json cho model. Vui lòng thử lại.", isError: true)
+                                            isShowingFileImporter = false
+                                            return
                                         }
+
+                                        func voiceId(for url: URL) -> String {
+                                            let baseName = url.deletingPathExtension().lastPathComponent
+                                            if url.pathExtension.lowercased() == "json", baseName.lowercased().hasSuffix(".onnx") {
+                                                return String(baseName.dropLast(5)).toASCIIID
+                                            }
+                                            return baseName.toASCIIID
+                                        }
+
+                                        let jsonById = Dictionary(uniqueKeysWithValues: jsonURLs.compactMap { url in
+                                            let id = voiceId(for: url)
+                                            return id.isEmpty ? nil : (id, url)
+                                        })
+
+                                        var pairedFiles: [(onnxURL: URL, jsonURL: URL, voiceId: String)] = []
+                                        var missingJSON: [String] = []
+                                        for onnxURL in onnxURLs {
+                                            let id = voiceId(for: onnxURL)
+                                            if let jsonURL = jsonById[id] {
+                                                pairedFiles.append((onnxURL: onnxURL, jsonURL: jsonURL, voiceId: id))
+                                            } else {
+                                                missingJSON.append(onnxURL.lastPathComponent)
+                                            }
+                                        }
+
+                                        if !missingJSON.isEmpty {
+                                            showToast("Thiếu tệp .json tương ứng cho: \(missingJSON.joined(separator: ", ")).", isError: true)
+                                            isShowingFileImporter = false
+                                            return
+                                        }
+
+                                        let pairsWithAccess = pairedFiles.map { pair in
+                                            (
+                                                onnxURL: pair.onnxURL,
+                                                onnxAccess: pair.onnxURL.startAccessingSecurityScopedResource(),
+                                                jsonURL: pair.jsonURL,
+                                                jsonAccess: pair.jsonURL.startAccessingSecurityScopedResource(),
+                                                voiceId: pair.voiceId
+                                            )
+                                        }
+
+                                        isShowingFileImporter = false
+                                        showToast("Đang nhập model...", isError: false)
                                         Task {
-                                            await importModels(from: urlsWithAccess)
+                                            await importModels(from: pairsWithAccess)
                                         }
                                     },
                                     onCancel: {
@@ -461,6 +512,25 @@ struct ContentView: View {
                         dismissToast()
                     }
                 }
+            }
+
+            if isImportingModel {
+                Color.black.opacity(0.35)
+                    .edgesIgnoringSafeArea(.all)
+                    .transition(.opacity)
+                    .zIndex(998)
+
+                VStack(spacing: 16) {
+                    ProgressView(importModelMessage)
+                        .progressViewStyle(CircularProgressViewStyle())
+                        .padding(24)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(radius: 16)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .zIndex(999)
+            }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: toast != nil)
                 .zIndex(999)
@@ -638,93 +708,74 @@ struct ContentView: View {
         }
     }
 
-    private func importModels(from urlsWithAccess: [(url: URL, hasAccess: Bool)]) async {
-        //AppLogger.shared.log("[DEBUG_IMPORT] ENTER importModels")
+    private func importModels(from pairs: [(onnxURL: URL, onnxAccess: Bool, jsonURL: URL, jsonAccess: Bool, voiceId: String)]) async {
+        isImportingModel = true
+        defer { isImportingModel = false }
+
         let fm = FileManager.default
         var importCount = 0
         var errorCount = 0
-        
-        let onnxUrls = urlsWithAccess.map { $0.url }.filter { $0.pathExtension.lowercased() == "onnx" }
-        let singleOnnxVoiceId = onnxUrls.count == 1 ? onnxUrls[0].deletingPathExtension().lastPathComponent.toASCIIID : nil
-        
-        for (url, access) in urlsWithAccess {
+
+        for pair in pairs {
+            let onnxURL = pair.onnxURL
+            let jsonURL = pair.jsonURL
+            let voiceId = pair.voiceId
+
             defer {
-                if access {
-                    url.stopAccessingSecurityScopedResource()
+                if pair.onnxAccess {
+                    onnxURL.stopAccessingSecurityScopedResource()
+                }
+                if pair.jsonAccess {
+                    jsonURL.stopAccessingSecurityScopedResource()
                 }
             }
-            
-            let ext = url.pathExtension.lowercased()
-            let filename = url.lastPathComponent
-            
-            var targetURL: URL? = nil
-            do {
-                let resolvedTarget: URL
-                if ext == "onnx" {
-                    let voiceId = url.deletingPathExtension().lastPathComponent.toASCIIID
-                    guard !voiceId.isEmpty else {
-                        throw NSError(domain: "ContentView", code: 1, userInfo: [NSLocalizedDescriptionKey: "ID model không hợp lệ."])
+
+            let targets: [(source: URL, destination: URL)] = [
+                (source: onnxURL, destination: appState.modelStore.modelURL(for: voiceId, extension: "onnx")),
+                (source: jsonURL, destination: appState.modelStore.modelURL(for: voiceId, extension: "onnx.json"))
+            ]
+
+            for item in targets {
+                var cleanupURL: URL? = nil
+                do {
+                    let resourceValues = try item.source.resourceValues(forKeys: [.fileSizeKey])
+                    let fileSize = resourceValues.fileSize ?? 0
+                    if fileSize <= 0 {
+                        throw NSError(domain: "ContentView", code: 1, userInfo: [NSLocalizedDescriptionKey: "Tệp \(item.source.lastPathComponent) trống hoặc không thể đọc."])
                     }
-                    resolvedTarget = appState.modelStore.modelURL(for: voiceId, extension: "onnx")
-                } else if ext == "json" {
-                    let voiceId: String
-                    if let predeterminedId = singleOnnxVoiceId {
-                        voiceId = predeterminedId
-                    } else {
-                        let baseName = url.deletingPathExtension().lastPathComponent
-                        if baseName.lowercased().hasSuffix(".onnx") {
-                            voiceId = String(baseName.dropLast(5)).toASCIIID
-                        } else {
-                            voiceId = baseName.toASCIIID
+
+                    if item.source.pathExtension.lowercased() == "json" {
+                        let data = try Data(contentsOf: item.source)
+                        guard let _ = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+                            throw NSError(domain: "ContentView", code: 2, userInfo: [NSLocalizedDescriptionKey: "Cấu hình JSON \(item.source.lastPathComponent) không hợp lệ."])
                         }
                     }
-                    guard !voiceId.isEmpty else {
-                        throw NSError(domain: "ContentView", code: 2, userInfo: [NSLocalizedDescriptionKey: "ID cấu hình không hợp lệ."])
+
+                    if fm.fileExists(atPath: item.destination.path) {
+                        try fm.removeItem(at: item.destination)
                     }
-                    resolvedTarget = appState.modelStore.modelURL(for: voiceId, extension: "onnx.json")
-                } else {
-                    continue
-                }
-                
-                // Validate file before copying
-                if ext == "onnx" {
-                    let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
-                    let fileSize = resourceValues.fileSize ?? 0
-                    if fileSize < 1_000_000 {
-                        throw NSError(domain: "ContentView", code: 4, userInfo: [NSLocalizedDescriptionKey: "Kích thước tệp model quá nhỏ (\(fileSize) bytes). Có thể tệp đã bị hỏng."])
+
+                    cleanupURL = item.destination
+                    try streamCopy(from: item.source, to: item.destination)
+                    importCount += 1
+                } catch {
+                    appLog("Failed to import file \(item.source.lastPathComponent): \(error.localizedDescription)")
+                    if let cleanupURL = cleanupURL, fm.fileExists(atPath: cleanupURL.path) {
+                        try? fm.removeItem(at: cleanupURL)
                     }
-                } else if ext == "json" {
-                    let data = try Data(contentsOf: url)
-                    guard let _ = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
-                        throw NSError(domain: "ContentView", code: 3, userInfo: [NSLocalizedDescriptionKey: "Cấu hình JSON không hợp lệ hoặc bị hỏng."])
-                    }
+                    errorCount += 1
                 }
-                
-                targetURL = resolvedTarget
-                
-                if fm.fileExists(atPath: resolvedTarget.path) {
-                    try fm.removeItem(at: resolvedTarget)
-                }
-                
-                try streamCopy(from: url, to: resolvedTarget)
-                importCount += 1
-            } catch {
-                appLog("Failed to import file \(filename): \(error.localizedDescription)")
-                if let cleanupURL = targetURL, fm.fileExists(atPath: cleanupURL.path) {
-                    try? fm.removeItem(at: cleanupURL)
-                }
-                errorCount += 1
             }
         }
-        
+
         appLog("Imported \(importCount) files. Errors: \(errorCount)")
         modelRefreshTrigger += 1
         await loadVoices(forceRefresh: false)
-        
+
         if errorCount > 0 {
-            showToast("Lỗi nhập \(errorCount) tệp model/cấu hình. Vui lòng thử lại.", isError: true)
+            showToast("Lỗi nhập model/cấu hình. Vui lòng kiểm tra lại các cặp .onnx và .json.", isError: true)
         } else if importCount > 0 {
-            showToast("Đã nhập thành công \(importCount) tệp tin.", isError: false)
+            showToast("Đã nhập thành công \(pairs.count) model.", isError: false)
         }
     }
     
@@ -1583,6 +1634,9 @@ struct EditWordSheet: View {
 
 extension UTType {
     static var onnx: UTType {
-        UTType(exportedAs: "com.onnxruntime.onnx")
+        if let utType = UTType(filenameExtension: "onnx", conformingTo: .data) {
+            return utType
+        }
+        return UTType(exportedAs: "com.onnxruntime.onnx")
     }
 }
