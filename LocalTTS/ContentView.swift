@@ -1145,7 +1145,7 @@ struct DictionaryEditView: View {
                     }
                     .sheet(isPresented: $showingFileImporter) {
                         DocumentPicker(
-                            allowedContentTypes: [.data],
+                            allowedContentTypes: [.propertyList, .json, .commaSeparatedText, .plainText],
                             allowsMultipleSelection: false,
                             onPick: { urls in
                                 guard let selectedURL = urls.first else { return }
@@ -1384,10 +1384,25 @@ struct DictionaryEditView: View {
                     }
                     importedWords = dict
                 } else if ext == "json" {
-                    guard let dict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: String] else {
+                    let jsonObject = try JSONSerialization.jsonObject(with: data, options: [])
+                    if let dict = jsonObject as? [String: String] {
+                        importedWords = dict
+                    } else if let dictAny = jsonObject as? [String: Any] {
+                        for (key, value) in dictAny {
+                            if let stringValue = value as? String {
+                                importedWords[key] = stringValue
+                            } else if let numberValue = value as? NSNumber {
+                                importedWords[key] = numberValue.stringValue
+                            } else if let boolValue = value as? Bool {
+                                importedWords[key] = String(boolValue)
+                            }
+                        }
+                        if importedWords.isEmpty {
+                            throw NSError(domain: "DictionaryEditView", code: 400, userInfo: [NSLocalizedDescriptionKey: "Tệp .json không hợp lệ. Vui lòng chọn tệp chứa dạng cặp khóa-giá trị phẳng [String: String]."])
+                        }
+                    } else {
                         throw NSError(domain: "DictionaryEditView", code: 400, userInfo: [NSLocalizedDescriptionKey: "Tệp .json không hợp lệ. Vui lòng chọn tệp chứa dạng cặp khóa-giá trị phẳng [String: String]."])
                     }
-                    importedWords = dict
                 } else if ext == "csv" || ext == "txt" {
                     importedWords = try parseCSV(data: data)
                 } else {
