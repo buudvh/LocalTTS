@@ -13,8 +13,8 @@ final class BackgroundKeepAlive {
             try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try session.setActive(true)
             
-            // Sinh 1 giây âm thanh im lặng (tần số 16kHz)
-            let sampleRate = 16000
+            // Sinh 1 giây âm thanh im lặng với sample rate thấp hơn để giảm overhead
+            let sampleRate = 8000
             let silenceSamples = Array(repeating: Float(0.0), count: sampleRate)
             let silentWavData = WAVEncoder.encodePCM16(samples: silenceSamples, sampleRate: sampleRate)
             

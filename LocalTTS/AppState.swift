@@ -35,7 +35,6 @@ final class AppState: ObservableObject {
     func startServer() {
         do {
             try server.start()
-            keepAlive.start()
             lastError = nil
         } catch {
             lastError = error.localizedDescription
@@ -45,5 +44,18 @@ final class AppState: ObservableObject {
     func stopServer() {
         server.stop()
         keepAlive.stop()
+    }
+
+    func updateBackgroundMode(_ enabled: Bool) {
+        guard server.isRunning else {
+            keepAlive.stop()
+            return
+        }
+
+        if enabled {
+            keepAlive.start()
+        } else {
+            keepAlive.stop()
+        }
     }
 }

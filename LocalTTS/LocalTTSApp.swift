@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct LocalTTSApp: App {
     @StateObject private var appState = AppState()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         UserDefaults.standard.register(defaults: [
@@ -21,6 +22,16 @@ struct LocalTTSApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+        }
+        .onChange(of: scenePhase) { newPhase in
+            switch newPhase {
+            case .background:
+                appState.updateBackgroundMode(true)
+            case .active, .inactive:
+                appState.updateBackgroundMode(false)
+            @unknown default:
+                appState.updateBackgroundMode(false)
+            }
         }
     }
 }

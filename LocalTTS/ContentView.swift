@@ -33,6 +33,7 @@ struct ContentView: View {
     // Tab navigation and refresh trigger
     @State private var activeTab: TabType = .tts
     @State private var modelRefreshTrigger = 0
+    @State private var systemTabRefreshTrigger = 0
     
     // Progress variables for model downloading in Model tab
     @State private var downloadingStatus: [String: Double] = [:]
@@ -446,6 +447,12 @@ struct ContentView: View {
                     Label("Hệ thống", systemImage: "server.rack")
                 }
                 .tag(TabType.system)
+                .id(systemTabRefreshTrigger)
+            }
+            .onChange(of: activeTab) { newTab in
+                if newTab == .system {
+                    systemTabRefreshTrigger += 1
+                }
             }
             .scrollDismissesKeyboard(.immediately)
             .task {
