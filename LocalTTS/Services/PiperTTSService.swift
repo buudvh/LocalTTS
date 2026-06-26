@@ -7,13 +7,11 @@ protocol PiperEngine {
 final class PiperTTSService {
     private let modelStore: ModelStore
     private let engine: PiperEngine
-    private let lock = NSLock()
+    private let syncQueue = DispatchQueue(label: "PiperTTSService.sync")
     private var _currentModel: String?
 
     var currentModel: String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return _currentModel
+        return syncQueue.sync { _currentModel }
     }
 
     var engineStatus: String {
@@ -35,9 +33,7 @@ final class PiperTTSService {
             throw APIError.modelNotCached("Model '\(voice)' is not cached. Call /v1/models/prefetch first.")
         }
 
-        lock.lock()
-        _currentModel = voice
-        lock.unlock()
+        syncQueue.sync { _currentModel = voice }
         
         // Nếu không chứa ký tự chữ/số nào, tạo khoảng lặng chờ tương đương dấu câu và trả về ngay
         if text.rangeOfCharacter(from: .alphanumerics) == nil {

@@ -531,11 +531,11 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .zIndex(999)
             }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: toast != nil)
-                .zIndex(999)
-            }
+
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: toast != nil)
+        .zIndex(999)
     }
 
     @ViewBuilder
