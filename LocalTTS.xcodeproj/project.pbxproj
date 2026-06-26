@@ -26,6 +26,7 @@
 		000000000000000000000116 /* ONNXPiperEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000216 /* ONNXPiperEngine.swift */; };
 		000000000000000000000117 /* TextPreprocessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000217 /* TextPreprocessor.swift */; };
 		000000000000000000000118 /* BackgroundTaskSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000218 /* BackgroundTaskSession.swift */; };
+		000000000000000000000119 /* DocumentPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000219 /* DocumentPicker.swift */; };
 
 		00000000000000000000011B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000021B /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -132,6 +133,7 @@
 				000000000000000000000206 /* WAVEncoder.swift */,
 				00000000000000000000020F /* AppLogger.swift */,
 				000000000000000000000218 /* BackgroundTaskSession.swift */,
+				000000000000000000000219 /* DocumentPicker.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -240,9 +242,7 @@
 				000000000000000000000116 /* ONNXPiperEngine.swift in Sources */,
 				000000000000000000000117 /* TextPreprocessor.swift in Sources */,
 				000000000000000000000118 /* BackgroundTaskSession.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
+		000000000000000000000119 /* DocumentPicker.swift in Sources */,
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */

@@ -230,7 +230,7 @@ struct ContentView: View {
                                         }
                                     },
                                     onCancel: {
-                                        showingFileImporter = false
+                                        isShowingFileImporter = false
                                     }
                                 )
                             }

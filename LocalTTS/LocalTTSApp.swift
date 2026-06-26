@@ -23,15 +23,5 @@ struct LocalTTSApp: App {
             ContentView()
                 .environmentObject(appState)
         }
-        .onChange(of: scenePhase) { newPhase in
-            switch newPhase {
-            case .background:
-                appState.updateBackgroundMode(true)
-            case .active, .inactive:
-                appState.updateBackgroundMode(false)
-            @unknown default:
-                appState.updateBackgroundMode(false)
-            }
-        }
     }
 }
