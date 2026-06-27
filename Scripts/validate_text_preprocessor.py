@@ -94,11 +94,11 @@ def ensure_debug_and_perf_configs_are_wired() -> None:
             raise SystemExit(message)
 
     expected_toggles = [
-        'Section("Preprocess")',
-        'Toggle("Normalize numbers"',
-        'Toggle("Replace dictionary words"',
-        'Toggle("Transliterate EN/JP"',
-        'Toggle("Debug preprocess logs"',
+        'Section("Tiền xử lý text")',
+        'Toggle("Chuẩn hóa cách đọc số"',
+        'Toggle("Áp dụng thay thế từ điển"',
+        'Toggle("Phiên âm tiếng Anh/Nhật"',
+        'Toggle("Ghi nhật ký gỡ lỗi"',
     ]
     for needle in expected_toggles:
         if needle not in view_text:

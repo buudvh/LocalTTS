@@ -423,35 +423,37 @@ struct ContentView: View {
                 await loadVoices(forceRefresh: false)
             }
             .dismissKeyboardOnTap()
-            .safeAreaInset(edge: .bottom) {
-                if let toast = toast {
-                    HStack(spacing: 10) {
-                        Image(systemName: toast.isError
-                            ? "exclamationmark.circle.fill"
-                            : "checkmark.circle.fill")
 
-                        Text(toast.message)
-                            .font(.subheadline)
-                            .multilineTextAlignment(.leading)
-                    }
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Capsule())
-                    .shadow(radius: 8)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: .bottom).combined(with: .opacity),
-                            removal: .opacity
-                        )
-                    )
-                    .onTapGesture {
-                        dismissToast()
-                    }
+            if let toast = toast {
+                HStack(spacing: 10) {
+                    Image(systemName: toast.isError
+                        ? "exclamationmark.circle.fill"
+                        : "checkmark.circle.fill")
+
+                    Text(toast.message)
+                        .font(.subheadline)
+                        .multilineTextAlignment(.leading)
                 }
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.ultraThinMaterial)
+                .clipShape(Capsule())
+                .shadow(radius: 8)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 64)
+                .onTapGesture {
+                    dismissToast()
+                }
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .id(toast.id)
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .opacity
+                    )
+                )
+                .zIndex(1000)
             }
 
             if isImportingModel {
@@ -1314,6 +1316,10 @@ struct DictionaryEditView: View {
                 .shadow(radius: 8)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 8)
+                .onTapGesture {
+                    dismissToast()
+                }
+                .id(toast.id)
                 .transition(
                     .asymmetric(
                         insertion: .move(edge: .bottom)
@@ -1321,9 +1327,7 @@ struct DictionaryEditView: View {
                         removal: .opacity
                     )
                 )
-                .onTapGesture {
-                    dismissToast()
-                }
+                .zIndex(1000)
             }
         }
     }
