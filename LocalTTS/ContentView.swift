@@ -441,7 +441,7 @@ struct ContentView: View {
                 .clipShape(Capsule())
                 .shadow(radius: 8)
                 .padding(.horizontal, 20)
-                .padding(.bottom, 64)
+                .padding(.bottom, 80)
                 .onTapGesture {
                     dismissToast()
                 }
