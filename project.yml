@@ -1,0 +1,32 @@
+name: LocalTTS
+options:
+  bundleIdPrefix: com.localtts
+targets:
+  LocalTTS:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: LocalTTS
+    dependencies:
+      - package: onnxruntime-swift-package-manager
+        product: onnxruntime
+      - package: espeak-ng-spm
+        product: libespeak-ng
+      - package: espeak-ng-spm
+        product: espeak-ng-data
+    settings:
+      base:
+        INFOPLIST_FILE: LocalTTS/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.localtts.server
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+packages:
+  onnxruntime-swift-package-manager:
+    url: https://github.com/microsoft/onnxruntime-swift-package-manager
+    from: 1.16.0
+  espeak-ng-spm:
+    url: https://github.com/espeak-ng/espeak-ng-spm
+    revision: cb0dfa23248513e39b9619d8d1383da329507281

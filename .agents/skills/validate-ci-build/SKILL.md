@@ -9,14 +9,15 @@ Sử dụng skill này khi bạn thực hiện các thay đổi mã nguồn tron
 
 ## Các Hạng Mục Kiểm Tra Bắt Buộc (CI Build Guard Checklist)
 
-### 1. Kiểm tra tham chiếu tệp tin trong Xcode Project (`.pbxproj`)
-Khi có bất kỳ thay đổi nào liên quan đến tệp tin:
-- **Thêm tệp mới / Xóa tệp cũ / Di chuyển tệp**: Bạn **bắt buộc** phải cập nhật đồng bộ cấu trúc trong tệp `LocalTTS.xcodeproj/project.pbxproj`.
-- **Hệ quả nếu thiếu**: GitHub Actions sẽ báo lỗi biên dịch `"no such file or directory"` hoặc `"file not found"` do Xcode không tìm thấy đường dẫn tệp được đăng ký trong target build.
-- **Cách khắc phục**: Hãy mở dự án bằng Xcode trên máy Mac để tự động lưu cấu trúc cập nhật, hoặc chỉnh sửa thủ công `.pbxproj` một cách cẩn thận nếu đang thao tác trên Windows.
+### 1. Cấu hình Dự án Xcode qua XcodeGen (`project.yml`)
+Dự án đã được chuyển đổi sang sử dụng **XcodeGen** để tự động sinh file dự án. Khi có bất kỳ thay đổi cấu trúc nào:
+- **Thêm/Xóa/Di chuyển tệp tin**: Bạn chỉ cần thao tác trực tiếp trên ổ đĩa trong thư mục `LocalTTS`. Thư mục `LocalTTS.xcodeproj` đã được đưa vào `.gitignore` và không còn được theo dõi bởi Git.
+- **Thay đổi cài đặt build, bundle ID, thư viện (SPM)**: Bạn **bắt buộc** phải chỉnh sửa file [project.yml](file:///d:/Study/LocalTTS/project.yml) thay vì sửa trên giao diện Xcode.
+- **Đồng bộ hóa cục bộ (máy Mac)**: Bạn cần chạy lệnh `xcodegen generate` trong thư mục dự án trước khi mở Xcode hoặc chạy build.
+- **Hệ quả nếu thiếu**: GitHub Actions sẽ cài đặt XcodeGen và tự động sinh dự án từ `project.yml` trước khi build. Nếu bạn không khai báo các file mới hoặc cấu hình mới trong `project.yml` (hoặc cấu trúc thư mục sai), CI sẽ bị lỗi biên dịch.
 
 ### 2. Kiểm tra độ tương thích của API & iOS Deployment Target
-- **iOS Target Version**: Xác định phiên bản iOS tối thiểu mà dự án hỗ trợ (Deployment Target) trong cấu hình dự án.
+- **iOS Target Version**: Xác định phiên bản iOS tối thiểu mà dự án hỗ trợ (Deployment Target là **iOS 17.0** trong `project.yml`).
 - **Tránh sử dụng API quá mới**: Không sử dụng các thành phần giao diện hoặc API Swift quá mới mà không bọc trong khối kiểm tra phiên bản:
   ```swift
   if #available(iOS 17.0, *) {
@@ -46,4 +47,4 @@ Khi có bất kỳ thay đổi nào liên quan đến tệp tin:
 
 ### 5. Kiểm tra sự phụ thuộc thư viện (Dependencies)
 - Nếu import thêm bất kỳ thư viện Swift nào, hãy kiểm tra xem thư viện đó có sẵn trong SDK hệ thống iOS (ví dụ: `AVFoundation`, `UniformTypeIdentifiers`, `Combine`) hay không.
-- Nếu là thư viện ngoài, phải đăng ký đầy đủ thông qua Swift Package Manager (SPM) hoặc CocoaPods để môi trường CI/CD có thể tự động resolve và cài đặt trước khi build.
+- Nếu là thư viện ngoài, phải đăng ký đầy đủ thông qua phần `packages` và `dependencies` trong file [project.yml](file:///d:/Study/LocalTTS/project.yml) để XcodeGen có thể sinh ra liên kết thư viện chính xác và môi trường CI/CD có thể tự động resolve trước khi build.

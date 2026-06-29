@@ -4,6 +4,7 @@ build/
 *.xcuserstate
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
+LocalTTS.xcodeproj/
 
 # macOS
 .DS_Store

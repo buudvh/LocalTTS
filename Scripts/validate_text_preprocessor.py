@@ -5,10 +5,11 @@ from typing import Dict, Set
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SWIFT = ROOT / "LocalTTS" / "Services" / "TextPreprocessor.swift"
+SWIFT = ROOT / "LocalTTS" / "Services" / "Preprocessing" / "TextPreprocessor.swift"
+WORD_CHECKER = ROOT / "LocalTTS" / "Services" / "Preprocessing" / "VietnameseWordChecker.swift"
 PLIST = ROOT / "LocalTTS" / "Resources" / "non-vietnamese-words.plist"
 APP = ROOT / "LocalTTS" / "LocalTTSApp.swift"
-VIEW = ROOT / "LocalTTS" / "ContentView.swift"
+VIEW = ROOT / "LocalTTS" / "Views" / "SettingsView.swift"
 
 EXPECTED_SETTING_KEYS = {
     "numericNormalizationEnabled": "preprocessorNumericNormalizationEnabled",
@@ -19,14 +20,14 @@ EXPECTED_SETTING_KEYS = {
 
 
 def load_vn_unsigned_words() -> Set[str]:
-    content = SWIFT.read_text(encoding="utf-8")
+    content = WORD_CHECKER.read_text(encoding="utf-8")
     match = re.search(
         r"private static let vnUnsignedWords:\s*Set<String>\s*=\s*\[(.*?)\]",
         content,
         re.S,
     )
     if not match:
-        raise SystemExit("vnUnsignedWords not found in TextPreprocessor.swift")
+        raise SystemExit("vnUnsignedWords not found in VietnameseWordChecker.swift")
 
     return {word.strip().lower() for word in re.findall(r'"([^"]+)"', match.group(1))}
 

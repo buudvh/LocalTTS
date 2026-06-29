@@ -29,11 +29,12 @@ Skill này hướng dẫn quy trình kiểm tra chéo logic sau khi sửa đổi
 
 ### Bước 5: Rà soát tích hợp CI/CD (GitHub Actions Build Guard)
 Để đảm bảo quy trình tự động build IPA trên GitHub Actions không bị lỗi (fail action), bắt buộc phải thực hiện các bước kiểm tra chéo sau:
-1. **Kiểm tra tham chiếu Xcode Project (`.pbxproj`)**:
-   - Khi có thêm mới, di chuyển hoặc xóa tệp tin, phải xác nhận các thay đổi đó đã được cập nhật đồng bộ trong tệp dự án `LocalTTS.xcodeproj/project.pbxproj`. Việc thiếu tham chiếu file trong cấu trúc project sẽ khiến build trên CI/CD bị lỗi "file not found".
+1. **Đồng bộ hóa cấu hình qua XcodeGen**:
+   - Khi có thêm mới, di chuyển hoặc xóa tệp tin, hãy kiểm tra xem thư mục tệp tin đó có nằm trong các thư mục được XcodeGen tự động quét (như `LocalTTS/`) hay không.
+   - Nếu thay đổi các cài đặt build, bundle ID, hoặc thêm thư viện SPM ngoài, phải khai báo đầy đủ trong file cấu hình [project.yml](file:///d:/Study/LocalTTS/project.yml). Tuyệt đối không lưu thủ công file `.xcodeproj` vào Git.
 2. **Kiểm tra sự tương thích của API và Target Version**:
-   - Xác nhận các API mới sử dụng không vượt quá phiên bản iOS tối thiểu được hỗ trợ (iOS Deployment Target). Tránh sử dụng các API quá mới (ví dụ: iOS 17/18+) mà không có kiểm tra phiên bản `@available`.
+   - Xác nhận các API mới sử dụng tương thích với iOS tối thiểu được hỗ trợ (iOS Deployment Target đặt là **iOS 17.0** trong `project.yml`). Tránh sử dụng các API quá mới (ví dụ: iOS 17/18+) mà không có kiểm tra phiên bản `@available`.
 3. **Kiểm tra sự phụ thuộc thư viện (Dependencies)**:
-   - Nếu sử dụng thêm các thư viện mới (ví dụ: `import Accelerate`), phải kiểm tra xem thư viện đó có phải là framework hệ thống có sẵn của iOS không. Nếu là thư viện ngoài, phải được khai báo đầy đủ trong cấu hình Swift Package Manager (SPM) hoặc CocoaPods để CI/CD có thể tự động tải và liên kết (resolve dependencies).
-4. **Kiểm tra cú pháp và cấu hình Workflow (.yml)**:
-   - Đảm bảo không làm thay đổi các đường dẫn đầu ra (build path, artifact path) được khai báo trong file workflow `.github/workflows/build-ipa.yml` trừ khi có chủ ý thay đổi cấu trúc đóng gói.
+   - Nếu sử dụng thêm các thư viện ngoài, phải được khai báo đầy đủ trong cấu hình Swift Package Manager (SPM) của file [project.yml](file:///d:/Study/LocalTTS/project.yml) để CI/CD có thể tự động tải và liên kết (resolve dependencies).
+4. **Kiểm tra cấu hình Workflow (.yml)**:
+   - File `.github/workflows/build-ipa.yml` đã được dọn dẹp chỉ giữ lại job `unsigned-ipa`. Hãy đảm bảo các bước cài đặt XcodeGen (`brew install xcodegen`) và sinh dự án (`xcodegen generate`) được thực hiện trước khi chạy lệnh biên dịch `xcodebuild`.
