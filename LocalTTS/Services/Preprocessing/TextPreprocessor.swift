@@ -37,7 +37,7 @@ private struct PreprocessorRuntimeConfig {
 }
 
 
-private enum PreprocessorRegex {
+enum PreprocessorRegex {
     static let url = try! NSRegularExpression(pattern: #"https?://\S+"#, options: [])
     static let www = try! NSRegularExpression(pattern: #"www\.\S+"#, options: [])
     static let email = try! NSRegularExpression(pattern: #"\S+@\S+\.\S+"#, options: [])

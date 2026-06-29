@@ -325,8 +325,7 @@ final class EnglishTransliterator {
             if i.isEmpty { return "" }
 
             let lConsonants = "bcdfghjklmnpqrstvwxz"
-            i = i.replacingOccurrences(of: "([brlptdgmnckxsvfzjwqh])\\1+", with: "$1", options: .regularExpression)
-
+            i = i.replacingOccurrences(of: "([brlptdgmnckxsvfzjwqh])\\1+", with: "$1", options: [.regularExpression])
             let mCombos = ["ch", "th", "ph", "sh", "ng", "tr", "nh", "gh", "kh"]
             var p = ""
             let chars = Array(i)

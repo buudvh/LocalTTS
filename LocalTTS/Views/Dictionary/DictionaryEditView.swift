@@ -157,7 +157,7 @@ struct DictionaryEditView: View {
                     }
                 }
                 .searchable(text: $searchText, prompt: "Tìm từ...")
-                .onChange(of: searchText) { _ in
+                .onChange(of: searchText) { oldValue, newValue in
                     visibleCount = 100
                 }
                 .overlay {

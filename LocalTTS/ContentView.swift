@@ -42,8 +42,8 @@ struct ContentView: View {
                     .tag(TabType.system)
                     .id(systemTabRefreshTrigger)
             }
-            .onChange(of: activeTab) { newTab in
-                if newTab == .system {
+            .onChange(of: activeTab) { oldValue, newValue in
+                if newValue == .system {
                     systemTabRefreshTrigger += 1
                 }
             }
