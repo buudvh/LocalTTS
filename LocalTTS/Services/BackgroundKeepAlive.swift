@@ -27,18 +27,20 @@ final class BackgroundKeepAlive {
             try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try session.setActive(true)
             
-            // Sinh 1 giây âm thanh im lặng với sample rate thấp hơn để giảm overhead
+            // Sinh 1 giây âm thanh có nhiễu trắng cực nhỏ (-90dB) để tránh bộ quét silent audio của iOS
             let sampleRate = 8000
-            let silenceSamples = Array(repeating: Float(0.0), count: sampleRate)
+            let silenceSamples = (0..<sampleRate).map { _ in
+                Float.random(in: -0.00003...0.00003)
+            }
             let silentWavData = WAVEncoder.encodePCM16(samples: silenceSamples, sampleRate: sampleRate)
             
             audioPlayer = try AVAudioPlayer(data: silentWavData)
             audioPlayer?.numberOfLoops = -1 // Lặp vô hạn
-            audioPlayer?.volume = 0.0 // Âm lượng bằng 0 để không gây tiếng ồn
+            audioPlayer?.volume = 0.02 // Âm lượng cực nhỏ lớn hơn 0 để hệ thống mixer ghi nhận active audio stream
             audioPlayer?.prepareToPlay()
             audioPlayer?.play()
             isPlaying = true
-            appLog("🔊 Background keep-alive started.")
+            appLog("🔊 Background keep-alive started with micro-noise bypass.")
         } catch {
             appLog("⚠️ Failed to start background keep-alive: \(error)")
         }
@@ -61,7 +63,10 @@ final class BackgroundKeepAlive {
         
         let session = AVAudioSession.sharedInstance()
         do {
+            // Thiết lập lại category trước khi active để đảm bảo cấu hình không bị reset bởi hệ thống
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try session.setActive(true)
+            
             if let player = audioPlayer {
                 if !player.isPlaying {
                     player.prepareToPlay()
