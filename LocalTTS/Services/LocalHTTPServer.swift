@@ -9,6 +9,10 @@ final class LocalHTTPServer: ObservableObject {
     private let handler: APIHandler
     private let queue = DispatchQueue(label: "localtts.http.server")
     private var listener: NWListener?
+    
+    private var activeConnections: [UUID: NWConnection] = [:]
+    private var restartAttempts = 0
+    private let maxRestartAttempts = 3
 
     init(port: UInt16, handler: APIHandler) {
         self.port = port
@@ -28,17 +32,33 @@ final class LocalHTTPServer: ObservableObject {
         }
 
         let listener = try NWListener(using: parameters)
+        self.restartAttempts = 0
+        
         listener.newConnectionHandler = { [weak self] connection in
             self?.handle(connection)
         }
         listener.stateUpdateHandler = { [weak self] state in
-            Task { @MainActor in
+            guard let self else { return }
+            self.queue.async {
                 switch state {
                 case .ready:
-                    self?.isRunning = true
-                case .failed, .cancelled:
-                    self?.isRunning = false
-                    self?.listener = nil
+                    self.restartAttempts = 0
+                    Task { @MainActor in
+                        self.isRunning = true
+                    }
+                case .failed(let error):
+                    appLog("⚠️ LocalHTTPServer listener failed: \(error.localizedDescription)")
+                    Task { @MainActor in
+                        self.isRunning = false
+                        self.listener = nil
+                    }
+                    self.attemptRestart()
+                case .cancelled:
+                    appLog("⚠️ LocalHTTPServer listener cancelled.")
+                    Task { @MainActor in
+                        self.isRunning = false
+                        self.listener = nil
+                    }
                 default:
                     break
                 }
@@ -49,19 +69,76 @@ final class LocalHTTPServer: ObservableObject {
     }
 
     func stop() {
-        listener?.cancel()
-        listener = nil
-        isRunning = false
+        queue.async {
+            self.listener?.cancel()
+            self.listener = nil
+            
+            // Hủy toàn bộ kết nối active hiện tại để giải phóng cổng 17771 ngay lập tức
+            for (id, connection) in self.activeConnections {
+                appLog("🔌 Server stopping: force closing connection \(id)")
+                connection.cancel()
+            }
+            self.activeConnections.removeAll()
+            
+            Task { @MainActor in
+                self.isRunning = false
+            }
+        }
+    }
+
+    private func attemptRestart() {
+        guard restartAttempts < maxRestartAttempts else {
+            appLog("❌ Max server restart attempts reached (\(maxRestartAttempts)). Stopping auto-restart.")
+            return
+        }
+        restartAttempts += 1
+        let delay = Double(restartAttempts) * 2.0
+        appLog("🔄 Auto-restarting server (\(restartAttempts)/\(maxRestartAttempts)) in \(delay) seconds...")
+        
+        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                do {
+                    try self.start()
+                    appLog("✅ Server auto-restarted successfully.")
+                } catch {
+                    appLog("⚠️ Failed to auto-restart server: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     private func handle(_ connection: NWConnection) {
         connection.start(queue: queue)
-        receive(into: Data(), connection: connection)
+        
+        let connectionID = UUID()
+        activeConnections[connectionID] = connection
+        
+        // Thiết lập timeout 15 giây cho kết nối này để tránh rò rỉ socket mồ côi
+        let timeoutWorkItem = DispatchWorkItem { [weak self, weak connection] in
+            guard let self else { return }
+            self.queue.async {
+                guard self.activeConnections[connectionID] != nil else { return }
+                appLog("⚠️ HTTP connection \(connectionID) timed out. Force closing.")
+                self.closeConnection(connectionID)
+            }
+        }
+        
+        queue.asyncAfter(deadline: .now() + 15.0, execute: timeoutWorkItem)
+        
+        receive(into: Data(), connection: connection, connectionID: connectionID, timeoutWorkItem: timeoutWorkItem)
     }
 
-    private func receive(into buffer: Data, connection: NWConnection) {
+    private func closeConnection(_ id: UUID) {
+        if let connection = activeConnections.removeValue(forKey: id) {
+            connection.cancel()
+        }
+    }
+
+    private func receive(into buffer: Data, connection: NWConnection, connectionID: UUID, timeoutWorkItem: DispatchWorkItem) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 1_048_576) { [weak self] data, _, isComplete, error in
             guard let self else {
+                timeoutWorkItem.cancel()
                 connection.cancel()
                 return
             }
@@ -80,9 +157,16 @@ final class LocalHTTPServer: ObservableObject {
                         self.lastRequest = "\(request.method) \(request.path)"
                     }
                     let response = await self.handler.handle(request)
-                    connection.send(content: response.serialize(), completion: .contentProcessed { _ in
-                        connection.cancel()
-                    })
+                    
+                    self.queue.async {
+                        connection.send(content: response.serialize(), completion: .contentProcessed { [weak self] _ in
+                            guard let self else { return }
+                            self.queue.async {
+                                timeoutWorkItem.cancel()
+                                self.closeConnection(connectionID)
+                            }
+                        })
+                    }
                 }
                 return
             }
@@ -94,13 +178,20 @@ final class LocalHTTPServer: ObservableObject {
                     headers: ["Content-Type": "application/json; charset=utf-8"],
                     body: Data(#"{"error":"bad_request","message":"Malformed HTTP request."}"#.utf8)
                 )
-                connection.send(content: response.serialize(), completion: .contentProcessed { _ in
-                    connection.cancel()
-                })
+                
+                self.queue.async {
+                    connection.send(content: response.serialize(), completion: .contentProcessed { [weak self] _ in
+                        guard let self else { return }
+                        self.queue.async {
+                            timeoutWorkItem.cancel()
+                            self.closeConnection(connectionID)
+                        }
+                    })
+                }
                 return
             }
 
-            self.receive(into: nextBuffer, connection: connection)
+            self.receive(into: nextBuffer, connection: connection, connectionID: connectionID, timeoutWorkItem: timeoutWorkItem)
         }
     }
 
